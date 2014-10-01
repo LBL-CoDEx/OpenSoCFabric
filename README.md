@@ -1,7 +1,7 @@
-OpenSoC
+OpenSoC Fabric
 =======
 
-OpenSoC
+OpenSoC Fabric
 
 =======
 ## Copyright
