@@ -4,7 +4,7 @@ import Chisel._
 	
 object OpenSoC {
     def main(args: Array[String]): Unit = {
-		val mySWargs = Array("--backend", "c", "--genHarness", "--compile", "--parallelMakeJobs", "-1", "--test", "--Wall", "--vcd", "--reportDims")//, "--debug", "--ioDebug")
+		val mySWargs = Array("--backend", "c", "--genHarness", "--compile", "--parallelMakeJobs", "-1", "--compileInitializationUnoptimized", "--lineLimitFunctions", "1024", "--minimumLinesPerFile", "32768", "--test", "--Wall", "--vcd", "--reportDims")//, "--debug", "--ioDebug")
 		val myHWargs = Array("--backend", "v", "--genHarness", "--vcd")
 		var parms = Parameters.empty
 
