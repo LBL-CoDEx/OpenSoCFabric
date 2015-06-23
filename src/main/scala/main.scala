@@ -1,28 +1,39 @@
 package OpenSoC
 
 import Chisel._
+import scala.collection.mutable.MutableList
 	
 object OpenSoC {
     def main(args: Array[String]): Unit = {
 		val mySWargs = Array("--backend", "c", "--genHarness", "--compile", "--parallelMakeJobs", "-1", "--compileInitializationUnoptimized", "--lineLimitFunctions", "1024", "--minimumLinesPerFile", "32768", "--test", "--Wall", "--vcd", "--reportDims")//, "--debug", "--ioDebug")
 		val myHWargs = Array("--backend", "v", "--genHarness", "--vcd")
+		val mySysCargs = Array("--backend", "sysc", "--genHarness", "--compile", "--parallelMakeJobs", "-1", "--compileInitializationUnoptimized", "--lineLimitFunctions", "1024", "--minimumLinesPerFile", "32768", "--test", "--Wall", "--vcd", "--reportDims")//, "--debug", "--ioDebug")
 		var parms = Parameters.empty
 
-		val Dim = 2 // Dimension of topology
-		val K = Vector(2, 2) // Routers per dimension.
-		val C = 1 // Processors (endpoints) per router.
-		val numVCs = 1 // Number of Virtual Channels
+		var Dim = 2 // Dimension of topology
+		var K = Vector(2, 2) // Routers per dimension.
+		var C = 1 // Processors (endpoints) per router.
+		var numVCs = 2 // Number of Virtual Channels
 		
-		val numPortsCMesh = Dim*2+C
         var injRate :Double = 1.0
-		val numPortsCFlatBfly = K.sum - Dim + C
-		val numPorts = numPortsCMesh
 		var harnessName : String = ""
 		var moduleName  : String = ""
+        var packetCount : Int    = 64
         var myargs : Array[String] = Array() 
+        var traceFilename : String = ""
+        var fragmentationFactor : Int = 1
 		var moduleToTest : () => Chisel.Module = () => Chisel.Module(new MuxN[UInt](UInt(width=32),
 													parms.child("MyMux", Map(("n"->Soft(4))))
 													))
+		var lI = new MutableList[Int]
+		def toInt(s: String):Option[Int] = {
+  			try {
+    			Some(s.toInt)
+ 		 	} catch {
+    			case e:Exception => None
+  			}
+		}
+			
 		args.sliding(2).foreach(arg =>
 			arg(0) match {
 				case "--harnessName"    => (harnessName = arg(1))
@@ -30,10 +41,24 @@ object OpenSoC {
                 case "--injRate"        => (injRate = arg(1).toDouble)
                 case "--sw"             => (myargs = mySWargs)
                 case "--hw"             => (myargs = myHWargs) 
+                case "--sysc"           => (myargs = mySysCargs)
+				case "--Dim"			=> (Dim = arg(1).toInt)
+				case "--C"				=> (C = arg(1).toInt)
+				case "--numVCs"			=> (numVCs = arg(1).toInt)
+				case "--K"				=> (arg(1).map(x=>toInt(x.toString)).map(x=>if(x.isDefined){lI += x.get}))
+                case "--packetCount"    => (packetCount = arg(1).toInt)
+                case "--traceFilename"   => (traceFilename = arg(1))
+                case "--fragFactor"     => (fragmentationFactor = arg(1).toInt)
 				case _ => Nil
 			}
 		)
+		
+		if (lI.length > 0) { K = lI.toVector }	
+		val numPortsCMesh = Dim*2+C
+		val numPortsCFlatBfly = K.sum - Dim + C
+		val numPorts = numPortsCMesh
 		printf("Harness: %s Module: %s\n", harnessName, moduleName)
+        println ("K = " + K.toString)
 
 		def MakePacketChannel (parms: Parameters) : PacketChannel = {
 			val channel = new PacketChannel(parms)
@@ -251,8 +276,6 @@ object OpenSoC {
 														("queueDepth"->Soft(9)),
 														("routerInCredits"->Soft(8)),
 														("routerOutCredits"->Soft(8)),
-														("numInputVCs"->Soft(1)),
-														("numOutputVCs"->Soft(1)),
 														("numVCs"->Soft(numVCs)),
 
 														("routerID"->Hard(Vector(0,0))),
@@ -275,13 +298,11 @@ object OpenSoC {
 														("TopologyDimension"->Hard(Dim)),
 														("RoutersPerDim"->Hard(K)),
 														("Concentration"->Hard(C)),
-														("numInputVCs"->Soft(1)),
-														("numOutputVCs"->Soft(1)),
 														("numVCs"->Soft(numVCs)),
 
 														("queueDepth"->Soft(16)),
 
-														("packetIDWidth"->Hard(8)),
+														("packetIDWidth"->Hard(16)),
 														("packetMaxLength"->Hard(16)),
 														("packetWidth"->Hard(32)),
 
@@ -313,12 +334,37 @@ object OpenSoC {
 														("destCordDim"->Hard(Dim + C)),
 
 														("flitIDWidth"->Hard(4)),
-														("payloadWidth"->Hard(32)),
-														("Dim"->Hard(Dim)),
+														("payloadWidth"->Hard(4)),
+                                                        ("breadCrumbCount"->Soft(1)),
 														("InputFlitizer"->Soft((parms: Parameters) => new FlitToFlit(parms)))
 														)
 													), (p)=>new Flit(p))
 												))
+			case "OpenSoC_CMesh_Decoupled"	=> (moduleToTest = () => Module(new OpenSoC_CMesh_DecoupledWrapper(
+													parms.child("MyOpenSoC_CMesh", Map(
+														("TopologyDimension"->Hard(Dim)),
+														("RoutersPerDim"->Hard(K)),
+														("Concentration"->Hard(C)),
+														("numVCs"->Soft(numVCs)),
+
+														("queueDepth"->Soft(16)),
+
+														("packetIDWidth"->Hard(16)),
+														("packetMaxLength"->Hard(16)),
+														("packetWidth"->Hard(32)),
+
+														("packetTypeWidth"->Hard(4)),
+														("destCordWidth"->Hard(Math.max(log2Up(K.max),log2Up(C)))),
+														("destCordDim"->Hard(Dim + C)),
+
+														("flitIDWidth"->Hard(4)),
+														("payloadWidth"->Hard(4)),
+                                                        ("breadCrumbCount"->Soft(1)),
+														("InputFlitizer"->Soft((parms: Parameters) => new FlitToFlit(parms)))
+														)
+													)))
+                                                )
+
 			case "OpenSoC_CFlatBfly"	=> (moduleToTest = () => Module(new OpenSoC_CFlatBfly[Flit](
 													parms.child("MyOpenSoC_CFlatBfly", Map(
 														("TopologyDimension"->Hard(Dim)),
@@ -328,8 +374,7 @@ object OpenSoC {
 
 														("queueDepth"->Soft(16)),
 														("numVCs"->Soft(numVCs)),
-														("numOutputVCs"->Soft(1)),
-		
+														
 														("packetTypeWidth"->Hard(4)),
 														("packetMaxLength"->Hard(16)),
 														("packetWidth"->Hard(32)),
@@ -339,6 +384,7 @@ object OpenSoC {
 
 														("flitIDWidth"->Hard(4)),
 														("payloadWidth"->Hard(32)),
+                                                        ("breadCrumbCount"->Soft(1)),
 														("InputFlitizer"->Soft((parms: Parameters) => new FlitToFlit(parms)))
 														)
 													), (p)=>new Flit(p) )
@@ -364,25 +410,28 @@ object OpenSoC {
 			case "CMDORTester"				=> ( chiselMainTest(myargs, moduleToTest) { c => new CMDORTester(c.asInstanceOf[CMeshDOR]) } )
 			case "CFlatBflyDORTester"		=> ( chiselMainTest(myargs, moduleToTest) { c => new CFlatBflyDORTester(c.asInstanceOf[CFlatBflyDOR]) } )
 			case "SimpleRouterTester"		=> ( chiselMainTest(myargs, moduleToTest) { c => new SimpleRouterTester(c.asInstanceOf[SimpleRouterTestWrapper]) } )
-			// case "RouterRandomTester"		=> ( chiselMainTest(myargs, moduleToTest) { c => new RouterRandomTester(c.asInstanceOf[SimpleRouterTestWrapper], parms) } )
-		//	case "OpenSoC_CFlatBflyTester"		=> ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CFlatBflyTester(c.asInstanceOf[OpenSoC_CFlatBfly]) } )
-			case "OpenSoC_CFlatBtflyTester_Random_C2"	=> ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CFlatBtflyTester_Random_C2(c.asInstanceOf[OpenSoC_CFlatBfly[Flit]], parms) } )
 			case "OpenSoC_CFlatBtflyTester_Random"	=> ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CFlatBtflyTester_Random(c.asInstanceOf[OpenSoC_CFlatBfly[Flit]], parms) } )
-			//case "OpenSoC_CMeshTester_2"	=> ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CMeshTester_2(c.asInstanceOf[OpenSoC_CMesh]) } )
-			//case "OpenSoC_CFlatBflyTester"	=> ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CFlatBflyTester(c.asInstanceOf[OpenSoC_CFlatBfly]) } )
-			case "OpenSoC_CMeshTester_Random"	=> ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CMeshTester_Random(c.asInstanceOf[OpenSoC_CMesh[Flit]], parms) } )
-            case "OpenSoC_CMeshTester_Random_VarInjRate" => ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CMeshTester_Random_VarInjRate(c.asInstanceOf[OpenSoC_CMesh[Flit]], parms, injRate) } )
-			case "OpenSoC_CMeshTester_Random_C2"	=> ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CMeshTester_Random_C2(c.asInstanceOf[OpenSoC_CMesh[Flit]], parms) } )
+            case "OpenSoC_CMeshTester_Random_VarInjRate"    => ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CMesh_CombinedTester_VarInjRate(c.asInstanceOf[OpenSoC_CMesh[Flit]], parms, injRate, "Random", packetCount, fragmentationFactor) } )
+            case "OpenSoC_CMesh_NeighborTester_VarInjRate"  => ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CMesh_CombinedTester_VarInjRate(c.asInstanceOf[OpenSoC_CMesh[Flit]], parms, injRate, "Neighbor", packetCount, fragmentationFactor) } )
+            case "OpenSoC_CMesh_TornadoTester_VarInjRate"   => ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CMesh_CombinedTester_VarInjRate(c.asInstanceOf[OpenSoC_CMesh[Flit]], parms, injRate, "Tornado", packetCount, fragmentationFactor) } )
+            case "OpenSoC_CMesh_BitReverseTester_VarInjRate" => ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CMesh_CombinedTester_VarInjRate(c.asInstanceOf[OpenSoC_CMesh[Flit]], parms, injRate, "BitReverse", packetCount, fragmentationFactor) } )
+            case "OpenSoC_CMesh_TransposeTester_VarInjRate" => ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CMesh_CombinedTester_VarInjRate(c.asInstanceOf[OpenSoC_CMesh[Flit]], parms, injRate, "Transpose", packetCount, fragmentationFactor) } )
+            case "OpenSoC_CMesh_TraceTester"                 => ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CMesh_TraceTester(c.asInstanceOf[OpenSoC_CMesh[Flit]], parms, traceFilename, packetCount ) } )
 			case "OpenSoC_CMeshTester_Random_Packet"	=> ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CMeshTester_Combined_Packet(c.asInstanceOf[OpenSoC_CMesh[Packet]], parms, "Random") } )
-			//case "OpenSoC_CMeshTester_Neighbor"	=> ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CMeshTester_Neighbor(c.asInstanceOf[OpenSoC_CMesh], parms) } )
 			case "OpenSoC_CMeshTester_Neighbor_Packet"	=> ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CMeshTester_Combined_Packet(c.asInstanceOf[OpenSoC_CMesh[Packet]], parms, "Neighbor") } )
 			case "OpenSoC_CMeshTester_BitReverse_Packet"	=> ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CMeshTester_Combined_Packet(c.asInstanceOf[OpenSoC_CMesh[Packet]], parms, "BitReverse") } )
+			case "OpenSoC_CMesh_DecoupledWrapper_Tester"	=> ( chiselMainTest(myargs, moduleToTest) { c => new OpenSoC_CMesh_DecoupledWrapper_Tester(c.asInstanceOf[OpenSoC_CMesh_DecoupledWrapper], parms) } )
 			case _							=> (printf(" Unknown Test Harness Name: %s\n", harnessName))
 		}
 			
 	} //END chiselMain()
 /*
     var PacketIDs = UInt(1)
+    // This hashmap is indexed by destination coordinates, packet id, and then flit id. It returns the flit that is expected for that tuple.
+    var flittable = new scala.collection.mutable.HashMap[(Vector[Int],Int,Int),Flit]
+
+    // This function checks if the flit that was ejected at a specific destination (each destination should know its coordinate vector) was expected and is correct.
+    //def TestFlit(dest:Vector[UInt],incomingflit:Flit): Boolean = {
     // This hashmap is indexed by destination coordinates, packet id, and then flit id. It returns the flit that is expected for that tuple.
     var flittable = new scala.collection.mutable.HashMap[(Vector[Int],Int,Int),Flit]
 

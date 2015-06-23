@@ -9,7 +9,9 @@ class OpenSoCParams {
 }
 */
 
-class ReadyValid[ T <: Data] (parms : Parameters, tGen : Parameters => T) extends Bundle {
+
+
+class ReadyValid[ T <: Data] (parms : Parameters, tGen : Parameters => T) extends Bundle{
 
 		val packet : T = tGen(parms).asInput
 		val packetReady	= Bool(OUTPUT)
@@ -31,6 +33,34 @@ class OpenSoCPacketChannelPort(parms:Parameters) extends Bundle {
 	val out = new Channel(parms).flip()
 }
 
+class OpenSoC_CMesh_DecoupledWrapper(parms: Parameters) extends Module(parms) {
+
+	val K = parms.get[Vector[Int]]("RoutersPerDim") // Routers per dimension.
+	val C = parms.get[Int]("Concentration") // Processors (endpoints) per router.
+	val numRouters : Int = K.product //Math.pow(K, Dim).toInt
+	val numPorts = numRouters * C// K.product//(Math.pow(K,Dim)*C).toInt // K^Dim = numRouters, numRouters*C = numPorts
+    val io = new Bundle {
+        val inPorts     = Vec.fill(numPorts)  { new DecoupledIO[Flit](new Flit(parms)).flip() }
+        val outPorts    = Vec.fill(numPorts)  { new DecoupledIO[Flit](new Flit(parms)) }
+    }
+    
+    val network = Chisel.Module( new OpenSoC_CMesh[Flit](parms, (parms: Parameters) => new Flit(parms)) )
+
+    for (port <- 0 until numPorts){
+        network.io.ports(port).in.packetValid   := io.inPorts(port).valid 
+        network.io.ports(port).in.packet        := io.inPorts(port).bits
+        io.inPorts(port).ready                  := network.io.ports(port).in.packetReady
+        
+        io.outPorts(port).valid                 := network.io.ports(port).out.flitValid
+        io.outPorts(port).bits                  := network.io.ports(port).out.flit
+        network.io.ports(port).out.credit.grant     := io.outPorts(port).ready
+    }
+}
+class OpenSoC_CMesh_DecoupledWrapper_Tester(c: OpenSoC_CMesh_DecoupledWrapper, parms: Parameters) extends Tester(c) {
+	implicit def bool2BigInt(b:Boolean) : BigInt = if (b) 1 else 0
+
+	expect(c.io.inPorts(0).ready, 1)
+}
 
 class OpenSoC_CMesh[T<: Data](parms: Parameters, tGen : Parameters => T) extends Module(parms) {
 	val Dim = parms.get[Int]("TopologyDimension") // Dimension of topology
@@ -44,14 +74,8 @@ class OpenSoC_CMesh[T<: Data](parms: Parameters, tGen : Parameters => T) extends
 	val counterMax = UInt(32768)
 
 
-	val myParms = parms
-	
 	val io = new Bundle {
 		val ports 	= Vec.fill(numPorts) { new OpenSoCChannelPort[T](parms,tGen)}
-		val headFlitIn  = new HeadFlit(parms).asInput
-		val headFlitOut = new Flit(parms).asOutput
-		val bodyFlitIn  = new BodyFlit(parms).asInput
-		val bodyFlitOut = new Flit(parms).asOutput
 		val headFlitsIn  = Vec.fill(numPorts) { new HeadFlit(parms).asInput }
 		val headFlitsOut = Vec.fill(numPorts) { new Flit(parms).asOutput }
 		val bodyFlitsIn  = Vec.fill(numPorts) { new BodyFlit(parms).asInput }
@@ -59,33 +83,29 @@ class OpenSoC_CMesh[T<: Data](parms: Parameters, tGen : Parameters => T) extends
 		val flitsIn		 = Vec.fill(numPorts) { new Flit(parms).asInput }
 		val flitsOutAsHead = Vec.fill(numPorts) { new HeadFlit(parms).asOutput }
 		val flitsOutAsBody = Vec.fill(numPorts) { new BodyFlit(parms).asOutput }
+        val portsAsHeadFlits = Vec.fill(numPorts)   { new HeadFlit(parms).asOutput }
+        val portsAsBodyFlits = Vec.fill(numPorts)   { new BodyFlit(parms).asOutput }
 
 		val cyclesRouterBusy	= Vec.fill(numRouters){ UInt(OUTPUT, width=counterMax.getWidth)}
 		val cyclesChannelBusy	= Vec.fill(numRouters*routerRadix){UInt(OUTPUT, width=counterMax.getWidth)}
 	}
 
 
-	val flitExtract = Chisel.Module( new Flit2FlitBundle(parms) )
-	val headExtract = Chisel.Module( new HeadBundle2Flit(parms) )
-	val bodyExtract = Chisel.Module( new BodyBundle2Flit(parms) )
-
-	io.headFlitIn 	<> headExtract.io.inHead
-	io.headFlitOut  <> headExtract.io.outFlit
-	io.bodyFlitIn 	<> bodyExtract.io.inBody
-	io.bodyFlitOut  <> bodyExtract.io.outFlit
-
-
 	for (port <- 0 until numPorts){
-		var headExtracter = Chisel.Module( new HeadBundle2Flit(parms) )
-		var bodyExtracter = Chisel.Module( new BodyBundle2Flit(parms) )
-		var flit2flit	  = Chisel.Module( new Flit2FlitBundle(parms) )
-		io.headFlitsIn(port) 	<> 	headExtracter.io.inHead
-		io.headFlitsOut(port)	<>	headExtracter.io.outFlit
-		io.bodyFlitsIn(port)	<> 	bodyExtracter.io.inBody
-		io.bodyFlitsOut(port)	<>	bodyExtracter.io.outFlit
-		io.flitsIn(port)		<>  flit2flit.io.inFlit
-		io.flitsOutAsHead(port)	<>  flit2flit.io.outHead
-		io.flitsOutAsBody(port)	<>  flit2flit.io.outBody
+		var headExtracter           = Chisel.Module( new HeadBundle2Flit(parms) )
+		var bodyExtracter           = Chisel.Module( new BodyBundle2Flit(parms) )
+		var flit2flit	            = Chisel.Module( new Flit2FlitBundle(parms) )
+        var flitTranslate           = Chisel.Module( new Flit2FlitBundle(parms) )
+		io.headFlitsIn(port) 	    <> 	headExtracter.io.inHead
+		io.headFlitsOut(port)	    <>	headExtracter.io.outFlit
+		io.bodyFlitsIn(port)	    <> 	bodyExtracter.io.inBody
+		io.bodyFlitsOut(port)	    <>	bodyExtracter.io.outFlit
+		io.flitsIn(port)		    <>  flit2flit.io.inFlit
+		io.flitsOutAsHead(port)	    <>  flit2flit.io.outHead
+		io.flitsOutAsBody(port) 	<>  flit2flit.io.outBody
+        flitTranslate.io.inFlit :=      io.ports(port).out.flit       
+        io.portsAsHeadFlits(port)   <>  flitTranslate.io.outHead
+        io.portsAsBodyFlits(port)   <>  flitTranslate.io.outBody
 	}
 	
 	println("numVCs: " + numVCs)
@@ -117,6 +137,12 @@ class OpenSoC_CMesh[T<: Data](parms: Parameters, tGen : Parameters => T) extends
 			ejectionQ.io.in <> topology.io.outChannels(i)
 			io.ports(i).out <> ejectionQ.io.out
 		}
+	    for (r <- 0 until numRouters) {
+		    io.cyclesRouterBusy(r) := topology.io.cyclesRouterBusy(r)
+    		for(c <- 0 until routerRadix) {
+	    		io.cyclesChannelBusy((r*routerRadix) + c) := topology.io.cyclesChannelBusy((r*routerRadix) + c)
+	    	}
+        }
 	} else {	
 		println("In VC Mode")
 		println("------------------")
@@ -149,13 +175,13 @@ class OpenSoC_CMesh[T<: Data](parms: Parameters, tGen : Parameters => T) extends
 			ejectionQ.io.in <> topology.io.outChannels(i)
 			io.ports(i).out <> ejectionQ.io.out
 		}
+	    for (r <- 0 until numRouters) {
+		    io.cyclesRouterBusy(r) := topology.io.cyclesRouterBusy(r)
+    		for(c <- 0 until routerRadix) {
+	    		io.cyclesChannelBusy((r*routerRadix) + c) := topology.io.cyclesChannelBusy((r*routerRadix) + c)
+	    	}
+    	}
 	}
-//	for (r <- 0 until numRouters) {
-//		io.cyclesRouterBusy(r) := topology.io.cyclesRouterBusy(r)
-///		for(c <- 0 until routerRadix) {
-//			io.cyclesChannelBusy((r*routerRadix) + c) := topology.io.cyclesChannelBusy((r*routerRadix) + c)
-//		}
-//	}
 }
 
 class OpenSoC_FlitChannel(parms : Parameters) extends Bundle{
@@ -184,10 +210,6 @@ class OpenSoC_CFlatBfly[T<: Data](parms: Parameters, tGen : Parameters => T) ext
 	
 	val io = new Bundle {
 		val ports = Vec.fill(numPorts) { new OpenSoCChannelPort[T](parms, tGen) }
-		val headFlitIn  = new HeadFlit(parms).asInput
-		val headFlitOut = new Flit(parms).asOutput
-		val bodyFlitIn  = new BodyFlit(parms).asInput
-		val bodyFlitOut = new Flit(parms).asOutput
 		val headFlitsIn  = Vec.fill(numPorts) { new HeadFlit(parms).asInput }
 		val headFlitsOut = Vec.fill(numPorts) { new Flit(parms).asOutput }
 		val bodyFlitsIn  = Vec.fill(numPorts) { new BodyFlit(parms).asInput }
@@ -200,14 +222,6 @@ class OpenSoC_CFlatBfly[T<: Data](parms: Parameters, tGen : Parameters => T) ext
 		val cyclesChannelBusy	= Vec.fill(numRouters*routerRadix){UInt(OUTPUT, width=counterMax.getWidth)}
 	}
 
-	val flitExtract = Chisel.Module( new Flit2FlitBundle(parms) )
-	val headExtract = Chisel.Module( new HeadBundle2Flit(parms) )
-	val bodyExtract = Chisel.Module( new BodyBundle2Flit(parms) )
-
-	io.headFlitIn 	<> headExtract.io.inHead
-	io.headFlitOut  <> headExtract.io.outFlit
-	io.bodyFlitIn 	<> bodyExtract.io.inBody
-	io.bodyFlitOut  <> bodyExtract.io.outFlit
 
 	for (port <- 0 until numPorts){
 		var headExtracter = Chisel.Module( new HeadBundle2Flit(parms) )

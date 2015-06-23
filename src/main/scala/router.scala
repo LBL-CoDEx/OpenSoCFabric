@@ -64,16 +64,17 @@ abstract class VCRouter(parms: Parameters) extends Module(parms) {
 class OpenSoC_ConstantEndpoint(parms: Parameters) extends Router(parms) {
 	for (i <- 0 until numOutChannels) {
 		io.outChannels(i).flit 		<> Flit.fromBits(UInt(0),parms)
-		//io.inChannels(i).credit.valid 	:= UInt(0)
-		io.outChannels(i).credit.ready  := UInt(0)
+		//io.inChannels(i).credit.grant 	:= UInt(0)
+		io.outChannels(i).flitValid  := UInt(0)
 	}
 }
 
 class OpenSoC_VCConstantEndpoint(parms: Parameters) extends VCRouter(parms) {
 	for (i <- 0 until numOutChannels) {
 		io.outChannels(i).flit 		<> Flit.fromBits(UInt(0),parms)
-		//io.inChannels(i).credit.valid 	:= UInt(0)
-		io.outChannels(i).credit.map( _.ready := UInt(0) )
+		//io.inChannels(i).credit.grant 	:= UInt(0)
+		// io.outChannels(i).credit.map( _.ready := UInt(0) )
+		io.outChannels(i).flitValid  := UInt(0)
 	}
 }
 
@@ -248,7 +249,7 @@ class SimpleRouter(parms: Parameters) extends Router(parms) {
 		}
 		headFlitRegFile.io.readIncrement := pop
 		routingInBuffer.io.enq.bits := io.inChannels(i).flit
-		routingInBuffer.io.enq.valid := creditGen.io.outReady
+		routingInBuffer.io.enq.valid := io.inChannels(i).flitValid//creditGen.io.outReady
 		creditGen.io.inGrant := flitGranted 
 
 
@@ -310,7 +311,8 @@ class SimpleRouter(parms: Parameters) extends Router(parms) {
 		}.otherwise{
 			routingOutBuffer.io.enq.valid := swAllocator.io.resources(i).valid  //&&  orR(Vec((0 until numInChannels).map(n => swAllocator.io.requests(i)(n).grant)).toBits) //Bug: valid goes high incorrectly, causing bad data to be latched
 		}
-		creditCon.io.inValid := routingOutBuffer.io.deq.valid
+		//creditCon.io.inValid := routingOutBuffer.io.deq.valid
+		io.outChannels(i).flit := routingOutBuffer.io.deq.valid
 		routingOutBuffer.io.deq.ready := creditCon.io.outCredit
 		io.outChannels(i).flit <> routingOutBuffer.io.deq.bits
 		creditCon.io.inCredit <> io.outChannels(i).credit
@@ -347,8 +349,8 @@ class SimpleRouterTester (c: SimpleRouterTestWrapper) extends Tester(c) {
 	var zeroFlit = peek(c.io.bodyFlitOut)
 
 	for (i <- 0 until c.numInChannels) {
-		poke(c.io.inChannels(i).credit.ready,  0)
-		poke(c.io.inChannels(i).credit.valid,  0)
+		poke(c.io.inChannels(i).flitValid,  0)
+		poke(c.io.inChannels(i).credit.grant,  0)
 		// poke(c.io.inChannels(i).credit.isTail, 0)
 	}
 	step(1)
@@ -370,17 +372,17 @@ class SimpleRouterTester (c: SimpleRouterTestWrapper) extends Tester(c) {
 	
 	step(1)
 	for (i <- 0 until c.numInChannels) {
-		poke(c.io.inChannels(i).credit.ready, 0)
-		poke(c.io.outChannels(i).credit.valid, 0)
+		poke(c.io.inChannels(i).flitValid, 0)
+		poke(c.io.outChannels(i).credit.grant, 0)
 	}
-	poke(c.io.inChannels(0).credit.ready, 1)
+	poke(c.io.inChannels(0).flitValid, 1)
 	poke(c.io.inChannels(0).flit, myHeadFlit)
 	step(1)
-	poke(c.io.inChannels(0).credit.ready, 1)
+	poke(c.io.inChannels(0).flitValid, 1)
 	poke(c.io.inChannels(0).flit, myBodyFlit)
 	step(1)
 	poke(c.io.inChannels(0).flit, zeroFlit)
-	poke(c.io.inChannels(0).credit.ready, 0)
+	poke(c.io.inChannels(0).flitValid, 0)
 	step(routerLatencyInClks-2)
 	expect(c.io.outChannels(1).flit, myHeadFlit)
 	step(1)
@@ -411,20 +413,20 @@ class SimpleRouterTester (c: SimpleRouterTestWrapper) extends Tester(c) {
 	
 	step(1)
 	for (i <- 0 until c.numInChannels) {
-		poke(c.io.inChannels(i).credit.ready, 0)
-		poke(c.io.outChannels(i).credit.valid, 0)
+		poke(c.io.inChannels(i).flitValid, 0)
+		poke(c.io.outChannels(i).credit.grant, 0)
 	}
-	poke(c.io.inChannels(0).credit.ready, 1)
+	poke(c.io.inChannels(0).flitValid, 1)
 	poke(c.io.inChannels(0).flit, myHeadFlit)
 	step(1)
-	poke(c.io.inChannels(0).credit.ready, 1)
+	poke(c.io.inChannels(0).flitValid, 1)
 	poke(c.io.inChannels(0).flit, myBodyFlit)
 	step(1)
-	poke(c.io.inChannels(0).credit.ready, 1)
+	poke(c.io.inChannels(0).flitValid, 1)
 	poke(c.io.inChannels(0).flit, my2ndBodyFlit)
 	step(1)
 	poke(c.io.inChannels(0).flit, zeroFlit)
-	poke(c.io.inChannels(0).credit.ready, 0)
+	poke(c.io.inChannels(0).flitValid, 0)
 	expect(c.io.outChannels(3).flit, myHeadFlit)
 	step(1)
 	expect(c.io.outChannels(3).flit, myBodyFlit)
@@ -458,21 +460,21 @@ class SimpleRouterTester (c: SimpleRouterTestWrapper) extends Tester(c) {
 	
 	//Drive all head flits	
 	for(i <- 0 until c.numInChannels){
-		poke(c.io.inChannels(i).credit.ready, 1)
-		poke(c.io.outChannels(i).credit.valid, 1)
+		poke(c.io.inChannels(i).flitValid, 1)
+		poke(c.io.outChannels(i).credit.grant, 1)
 		poke(c.io.inChannels(i).flit, packets(i)(0))
 	}
 	step (1)
 	//Drive all body flits	
 	for(i <- 0 until c.numInChannels){
-		poke(c.io.inChannels(i).credit.ready, 1)
-		poke(c.io.outChannels(i).credit.valid, 1)
+		poke(c.io.inChannels(i).flitValid, 1)
+		poke(c.io.outChannels(i).credit.grant, 1)
 		poke(c.io.inChannels(i).flit, packets(i)(1))
 	}
 	step (1)
 	for(i <- 0 until c.numInChannels){
-		poke(c.io.inChannels(i).credit.ready, 0)
-		poke(c.io.outChannels(i).credit.valid, 0)
+		poke(c.io.inChannels(i).flitValid, 0)
+		poke(c.io.outChannels(i).credit.grant, 0)
 		poke(c.io.inChannels(i).flit, zeroFlit)
 	}
 	step(4)
@@ -543,6 +545,37 @@ class SimpleVCRouter(parms: Parameters) extends VCRouter(parms) {
 	val validVCs = (0 until numIns).map( a =>
 		Vec.fill(numOutChannels) { Reg(UInt(0, width=numVCs)) }
 	)
+
+	val creditConsReady = Vec( (0 until numOutChannels).map( c =>
+		Vec( (0 until numVCs).map(b =>
+			Bool()
+		) )
+	) )
+
+    val routerOutputStateMgmt = (0 until numInChannels).map( a => 
+                Chisel.Module(new VCRouterOutputStateManagement(parms))
+    ) 
+    
+    val currentRouterOutputState = Vec( (0 until numOutChannels).map (a =>
+                 routerOutputStateMgmt(a).io.currentState
+        ) )
+
+    val readyToXmit = Vec ( ( 0 until numIns).map( a =>
+            Vec ( ( 0 until numOutChannels).map( b =>
+                 Bool()
+            ) ) ) )
+    readyToXmit.map (a => 
+        a.map ( c => 
+                c := Bool(false)
+            )
+        )
+    val consumeCredit = Vec( (0 until numOutChannels).map( c =>
+            Vec ( ( 0 until numVCs).map( b =>
+    	        Bool()
+            ) ) ) )
+    consumeCredit.map( c =>
+    	c := Bool(false)
+    )
 	
 	//Router function is as follows:
 		// a) Head flit enqued and passed to routing function 
@@ -565,6 +598,8 @@ class SimpleVCRouter(parms: Parameters) extends VCRouter(parms) {
 	for (i <- 0 until numInChannels) {
 		for (j <- 0 until numVCs) {
 			val index = i*numVCs+j
+            val curInVC         = j 
+            val curInChannel    = i
 			println("i: " + i + " (" + numInChannels + ")   j: " + j + "(" + numVCs + ")   index: " + index + "(" + (numIns) + ")")
 			val creditGen = Chisel.Module ( new CreditGen(parms) )
 			val headFlitRegFile = Chisel.Module ( new RouterRegFile(
@@ -582,104 +617,143 @@ class SimpleVCRouter(parms: Parameters) extends VCRouter(parms) {
 					("routingCoord"->Soft(routerID)),
 					("numResources"->Soft(numOutChannels))
 				))) )
-			
-			// TAIL LOGIC
-			flitsAreTail(index) := routingInBuffer.io.deq.bits.isTail() && routingInBuffer.io.deq.valid
-			val flitIsTail = flitsAreTail(index)
-			val vcAllocGranted = vcAllocator.io.resources(index).valid //headFlitRegFile.io.rvPipelineReg(1)
-			val swAllocGranted = orR(Vec((0 until numOutChannels).map(n => swAllocator.io.requests(n)(index).grant)).toBits)
-			val flitGranted = swAllocGranted && vcAllocGranted
-			val noInputReq = ~orR(Vec((0 until numOutChannels).map(n => swAllocator.io.requests(n)(index).request)).toBits)
-			val pop = (flitGranted && flitIsTail)// || noInputReq
 
+            val routerStateMgmt     = Chisel.Module(new VCRouterStateManagement(parms))
+
+			val vcReplacer           = Chisel.Module( new ReplaceVCPort(parms.child( ("ReplaceVCPort",i,j), Map() )))
+			val rfResult            = Reg(init=UInt(0, width=Math.pow(2, routingFunction.io.result.getWidth).toInt )) 
+			val rfResultInt         = Reg(init=UInt(0, width=routingFunction.io.result.getWidth ))  
+			val lockControl         = Reg(init=UInt(1, width=1 ))
+            val assignedVC          = Reg(init=UInt(0, width = io.inChannels(0).flit.getWidth))
+
+            val VCRouterState       = new VCRouterState
+            val VCRouterOutputState = new VCRouterOutputState
+			
+			// --- STATE MACHINE LOGIC ----
+			flitsAreTail(index) := routingInBuffer.io.deq.bits.isTail() && routingInBuffer.io.deq.valid
+			val flitIsTail       = flitsAreTail(index)
+			val vcAllocGranted   = vcAllocator.io.resources(index).valid 
+			val swAllocGranted   = swAllocator.io.requests(rfResultInt)(index).grant && (swAllocator.io.chosens(rfResultInt) === UInt(index)) 
+			val flitGranted      = (swAllocGranted || ((routerStateMgmt.io.currentState === VCRouterState.swAllocGranted)) ) 
+			val pop              = (flitGranted && flitIsTail) && creditConsReady(rfResultInt)(assignedVC)  && (routerStateMgmt.io.currentState === VCRouterState.swAllocGranted)
+
+            val inValidReg       = Reg(init = Bool(false))
+            inValidReg          := routingInBuffer.io.deq.valid 
+
+            routerStateMgmt.io.inputBufferValid   := routingInBuffer.io.deq.valid
+            routerStateMgmt.io.routingComplete    := inValidReg
+            routerStateMgmt.io.vcAllocGranted     := vcAllocGranted
+            routerStateMgmt.io.swAllocGranted     := swAllocGranted
+            routerStateMgmt.io.creditsAvail       := creditConsReady(rfResultInt)(assignedVC)
+            routerStateMgmt.io.inputBufferIsTail  := routingInBuffer.io.deq.valid && routingInBuffer.io.deq.bits.isTail()
+            routerStateMgmt.io.outputReady        := ( (currentRouterOutputState(rfResultInt) === VCRouterOutputState.xmit) || (currentRouterOutputState(rfResultInt) === VCRouterOutputState.rdyToXmit))
+
+            // --------------------- 
+
+			creditGen.io.outCredit <> io.inChannels(curInChannel).credit(curInVC)
+
+            // ---- INPUT BUFFER LOGIC ----- 
+			val inChannelFlit                       = io.inChannels(curInChannel).flit
+			val correctVC                           = inChannelFlit.getVCPort() === UInt(curInVC)
+
+			when (io.inChannels(i).flit.isHead()) {
+				headFlitRegFile.io.writeData        := io.inChannels(curInChannel).flit.toBits
+				headFlitRegFile.io.writeEnable      := routingInBuffer.io.enq.valid
+			} .otherwise {
+				headFlitRegFile.io.writeData        := UInt(0)
+				headFlitRegFile.io.writeEnable      := Bool(false)
+			}
+			headFlitRegFile.io.readIncrement        := pop
+			routingInBuffer.io.enq.bits             := io.inChannels(curInChannel).flit
+			routingInBuffer.io.enq.valid            := io.inChannels(curInChannel).flitValid && correctVC 
+
+            //-------- DEBUG -----------
+            val debugStr_1      = "SimpleVCRouter: Flit with VC port" + io.inChannels(curInChannel).flit.getVCPort() + " attempting to write to VC " + j
+            val f2fB            = Chisel.Module(new Flit2FlitBundle(parms))
+            f2fB.io.inFlit      := Flit.fromBits(io.inChannels(i).flit.toBits, parms)
+            val debug_headFlit  = f2fB.io.outHead
+            val debug_bodyFlit  = f2fB.io.outBody
+            // assert(  (correctVC && io.inChannels(curInChannel).flitValid) || (~io.inChannels(curInChannel).flitValid),                              "SimpleVCRouter:" + routerID + " Incorrect VC found at input " + i + " VC " + j)
+            assert( ((~routingInBuffer.io.enq.valid)      || (routingInBuffer.io.enq.valid && correctVC)),          debugStr_1 ) 
+            assert( ((routingInBuffer.io.enq.ready        && io.inChannels(curInChannel).flitValid && correctVC) || (~io.inChannels(curInChannel).flitValid) || (~correctVC)),   "SimpleVCRouter:" + routerID +" Insufficent space in input buffer - Credit Ready asserted when Routing In Buffer not ready inputPort= " + i.toString + " curVC = " + j.toString )
 			when(flitGranted) {
 				io.counters(0).counterVal := UInt(1)
 			}.otherwise {
 				io.counters(0).counterVal := UInt(0)
 			}
+            //----- END DEBUG ---------
 
 
-			creditGen.io.outCredit <> io.inChannels(i).credit(j)
-			// for ( (n,x) <- creditGen.io.outCredit.elements ) {
-			// 	println("Element: " + n)
-			// 	if (n == "ready")	creditGen.io.outCredit(n) := io.inChannels(i).credit(n)
-			// 	else				io.inChannels(i).credit(n) := creditGen.io.outCredit(n)
-			// }
-
-			val correctVC = io.inChannels(i).flit.getVCPort() === UInt(j)
-		
-			// io.inChannels(i).flit.whenHead { head => 
-			// 	headFlitRegFile.io.writeData <> head
-			// 	headFlitRegFile.io.writeEnable := routingInBuffer.io.enq.valid
-			// } // NEEDS DEFAULT CASE, JOHN WILL IMPLIMENT
-			when (io.inChannels(i).flit.isHead()) {
-				headFlitRegFile.io.writeData := io.inChannels(i).flit.toBits
-				headFlitRegFile.io.writeEnable := routingInBuffer.io.enq.valid
-			} .otherwise {
-				headFlitRegFile.io.writeData := UInt(0)
-				headFlitRegFile.io.writeEnable := Bool(false)
-			}
-			headFlitRegFile.io.readIncrement := pop
-			routingInBuffer.io.enq.bits := io.inChannels(i).flit
-			routingInBuffer.io.enq.valid := creditGen.io.outReady //&& correctVC
-			creditGen.io.inGrant := flitGranted 
-
+            // ----- Routing Function Logic -----
 			(0 until numOutChannels).map( a => validVCs(index)(a) := routingFunction.io.vcsAvailable(a) )
 
-			val rfResult = Reg(init=UInt(0, width=Math.pow(2, routingFunction.io.result.getWidth).toInt )) 
-			val rfResultInt = Reg(init=UInt(0, width=routingFunction.io.result.getWidth ))  
-			val lockControl  = Reg(init=UInt(1, width=1 ))
 			routingFunction.io.inHeadFlit := Flit.fromBits(headFlitRegFile.io.readData, parms).asHead()
-			when (headFlitRegFile.io.readValid && ~flitIsTail) {
-				rfResult := UIntToOH(routingFunction.io.result) 
-				rfResultInt := routingFunction.io.result
-				lockControl  := pop  
-			} .otherwise{
-				rfResult := UInt(0)
-				rfResultInt := UInt(0)
-			}
+			// when (headFlitRegFile.io.readValid) && ~flitIsTail) {
+				rfResult        := UIntToOH(routingFunction.io.result) 
+				rfResultInt     := routingFunction.io.result
+			// } .otherwise{
+			// 	rfResult        := UInt(0)
+			// 	rfResultInt     := UInt(0)
+			// }
+            // -------------------------------
+				lockControl     := pop  
 			
-			headFlitRegFile.io.wePipelineReg(0) := (!headFlitRegFile.io.rvPipelineReg(0)) && headFlitRegFile.io.readValid
-			headFlitRegFile.io.writePipelineReg(0) := routingFunction.io.outHeadFlit.toBits
+            // Head Flit Reg File Pipeline update
+			headFlitRegFile.io.wePipelineReg(0)      := (!headFlitRegFile.io.rvPipelineReg(0)) && headFlitRegFile.io.readValid
+			headFlitRegFile.io.writePipelineReg(0)   := routingFunction.io.outHeadFlit.toBits
 
-			headFlitRegFile.io.wePipelineReg(1) := headFlitRegFile.io.rvPipelineReg(0) && vcAllocGranted //vcAllocator.io.resources(index).valid
-			headFlitRegFile.io.writePipelineReg(1) := headFlitRegFile.io.readPipelineReg(0)
+			headFlitRegFile.io.wePipelineReg(1)      := headFlitRegFile.io.rvPipelineReg(0) && vcAllocGranted && (routerStateMgmt.io.currentState === VCRouterState.packetRouted)
+			headFlitRegFile.io.writePipelineReg(1)   := headFlitRegFile.io.readPipelineReg(0)
 
-			headFlitRegFile.io.wePipelineReg(2) := headFlitRegFile.io.rvPipelineReg(1) && swAllocGranted
-			headFlitRegFile.io.writePipelineReg(2) := headFlitRegFile.io.readPipelineReg(1)
+			headFlitRegFile.io.wePipelineReg(2)      := headFlitRegFile.io.rvPipelineReg(1) && swAllocGranted && (routerStateMgmt.io.currentState === VCRouterState.vcAllocGranted)
+			headFlitRegFile.io.writePipelineReg(2)   := headFlitRegFile.io.readPipelineReg(1)
+            //--------------------------------- 
 
-			// rfResultsVC(index) := swAllocControlInt
-
+            // Switch and VC Allocator Logic 
 			for (k <- 0 until numOutChannels) {
-				swAllocator.io.requests(k)(index).request 	:= rfResult(k).toBool && vcAllocGranted
-				swAllocator.io.requests(k)(index).releaseLock := lockControl.toBool
+				swAllocator.io.requests(k)(index).request 	    := rfResult(k).toBool && (routerStateMgmt.io.currentState >= VCRouterState.vcAllocGranted) 
+				swAllocator.io.requests(k)(index).releaseLock   := lockControl.toBool && (routerStateMgmt.io.currentState === VCRouterState.swAllocGranted)
 
-				vcAllocator.io.resources(index).ready := routingInBuffer.io.deq.valid //&& (rfResultsVC(index) === UInt(k))
+				vcAllocator.io.resources(index).ready           := routingInBuffer.io.deq.valid && (routerStateMgmt.io.currentState >= VCRouterState.packetRouted)
 			}
+            //--------------------------------- 
 
-			
-			// Switch Input Logic
-			//routingInBuffer.io.deq.ready := flitGranted  && orR(swAllocControl.toBits) 
-			//Routing buffer deq should be asserted when:
-				//input buffer has recieved a grant AND the switch allocator is driving the correct selects on the switch inputs
-			//routingInBuffer.io.deq.ready := swAllocator.io.requests(swAllocControlInt)(i).grant  && (swAllocator.io.chosens(swAllocControlInt) === UInt(i)) //DDD
+            //Routing Input Buffer deque logic
+            //Update credits available
 			when(routingInBuffer.io.deq.bits.isHead() && ~headFlitRegFile.io.readValid) {
 				routingInBuffer.io.deq.ready := UInt(0) 
+                creditGen.io.inGrant         := Bool(false)
+              //  readyToXmit                  := Bool(false)
 			}.elsewhen(routingInBuffer.io.deq.bits.isHead() && headFlitRegFile.io.readValid) {
-				routingInBuffer.io.deq.ready := flitGranted 
+				routingInBuffer.io.deq.ready        := flitGranted && (routerStateMgmt.io.currentState >= VCRouterState.vcAllocGranted) && creditConsReady(rfResultInt)(assignedVC)
+                readyToXmit(index)(rfResultInt)     := flitGranted && (routerStateMgmt.io.currentState >= VCRouterState.vcAllocGranted) && creditConsReady(rfResultInt)(assignedVC) && routingInBuffer.io.deq.valid
+                creditGen.io.inGrant                := flitGranted && (routerStateMgmt.io.currentState >= VCRouterState.vcAllocGranted) && creditConsReady(rfResultInt)(assignedVC) && routingInBuffer.io.deq.valid
+			    //consumeCredit(rfResultInt)(assignedVC) := flitGranted && (routerStateMgmt.io.currentState >= VCRouterState.vcAllocGranted) && creditConsReady(rfResultInt)(assignedVC)
 			}.otherwise{
-				routingInBuffer.io.deq.ready := swAllocator.io.requests(rfResultInt)(index).grant  && (swAllocator.io.chosens(rfResultInt) === UInt(index)) //DDD
+				routingInBuffer.io.deq.ready        := flitGranted && (routerStateMgmt.io.currentState === VCRouterState.swAllocGranted) && creditConsReady(rfResultInt)(assignedVC)
+                readyToXmit(index)(rfResultInt)     := flitGranted && (routerStateMgmt.io.currentState === VCRouterState.swAllocGranted) && creditConsReady(rfResultInt)(assignedVC) && routingInBuffer.io.deq.valid
+				creditGen.io.inGrant                := flitGranted && (routerStateMgmt.io.currentState === VCRouterState.swAllocGranted) && creditConsReady(rfResultInt)(assignedVC) && routingInBuffer.io.deq.valid
+			    //consumeCredit(rfResultInt)(assignedVC) := flitGranted && (routerStateMgmt.io.currentState === VCRouterState.swAllocGranted) && creditConsReady(rfResultInt)(assignedVC)
 			}
-			// This is for adaptive and VC routing
-			val swInputHeadMux = Mux(routingInBuffer.io.deq.bits.isHead(), headFlitRegFile.io.readData, routingInBuffer.io.deq.bits.toBits)
-			// val swInputHeadMux = Mux(routingInBuffer.io.deq.bits.isHead(), headFlitRegFile.io.readPipelineReg(2), routingInBuffer.io.deq.bits.toBits)
-			val vcReplacer = Chisel.Module( new ReplaceVCPort(parms.child( ("ReplaceVCPort",i,j), Map() )))
+			//consumeCredit(rfResultInt)(assignedVC) := routingInBuffer.io.deq.ready
+            //--------------------------------- 
+
+            // Update VC in head flit based on allocation 
+			val swInputHeadMux =routingInBuffer.io.deq.bits.toBits
 			vcReplacer.io.oldFlit := Flit.fromBits(swInputHeadMux, parms)
-			vcReplacer.io.newVCPort := vcAllocator.io.chosens(index)
+
+            when(routerStateMgmt.io.currentState === VCRouterState.packetRouted && vcAllocGranted){
+                assignedVC := vcAllocator.io.chosens(index)
+            }
+
+            vcReplacer.io.newVCPort := assignedVC
+            //--------------------------------- 
+            
+			// Switch Input Logic
 			switch.io.inPorts(index) <> vcReplacer.io.newFlit
+
 		}
 	} //for (numIns)
-
 
 	// Loop through output channels, connect to switch
 	for (i <- 0 until numOutChannels) {
@@ -689,41 +763,63 @@ class SimpleVCRouter(parms: Parameters) extends VCRouter(parms) {
 			))) )
 		)
 
-		val routingOutReg = Reg( init=Flit.fromBits(UInt(0), parms) )
-		val outCreditMux = Chisel.Module( new MuxN[Bool](Bool(), parms.child(("OutCreditMux"), Map(
-				("n"->Soft(numVCs))
-			))))
+		creditConsReady(i).zipWithIndex.foreach{ case (c,k) =>
+			c := creditCons(k).io.outCredit
+		}
 
+        val VCRouterOutputState             = new VCRouterOutputState
+		val routingOutReg                   = Reg( init=Flit.fromBits(UInt(0), parms) )
+		val outCreditMux                    = Chisel.Module( new MuxN[Bool](Bool(), parms.child(("OutCreditMux"), Map(
+	                                			("n"->Soft(numVCs))
+		                                     ))))
+
+
+        //VC Allocator controls 
 		val vcsAvailForInputs = (0 until numIns).map(validVCs(_)(i))
 
 		for (k <- 0 until numIns) {
 			for (j <- 0 until numVCs) {
 				var indexOutput : Int = i*numVCs+j
 
-				vcLockControls(k)(indexOutput) := flitsAreTail(k) && vcGrants(k)(indexOutput)//&& (rfResultsVC(k) === UInt(i)) && vcGrants(k)(indexOutput)
-				vcAllocator.io.requests(k)(indexOutput).releaseLock := vcLockControls(k)(indexOutput)
-				vcAllocator.io.requests(k)(indexOutput).request := creditCons(j).io.outCredit & vcsAvailForInputs(k)(j)
+				val releaseVCLockReg                                = Reg(Bool(false))
+				releaseVCLockReg                                    := flitsAreTail(k) && creditCons(j).io.outCredit && (routerOutputStateMgmt(i).io.currentState === VCRouterOutputState.xmit) 
+				vcAllocator.io.requests(k)(indexOutput).releaseLock := releaseVCLockReg
+				vcAllocator.io.requests(k)(indexOutput).request     := vcsAvailForInputs(k)(j)
 			}
 		}
+        //-----------------
 
-		val regOutCredits = Reg( Bool(false) )
-		regOutCredits := orR(Vec((0 until numVCs).map(a => creditCons(a).io.outCredit)).toBits)
+        // Switch Allocator Controls
+		val outCredits                      = Vec( creditCons.map(_.io.outCredit) )
+		val almostOuts						= Vec( creditCons.map(_.io.almostOut) )
+		swAllocator.io.resources(i).ready   := Bool(true) 
+		var deqVCPort                       = switch.io.outPorts(i).getVCPort() 
+        // ------------------- 
 
-		val regSWAllocValid = Reg( Bool(false) )
-		regSWAllocValid := swAllocator.io.resources(i).valid
+        // Output register
+		routingOutReg                       := switch.io.outPorts(i)
+		io.outChannels(i).flit              := routingOutReg
+        // ------------------- 
 
-		swAllocator.io.resources(i).ready := regOutCredits
-		routingOutReg := switch.io.outPorts(i)
-		io.outChannels(i).flit := routingOutReg
-		var deqVCPort = routingOutReg.getVCPort()
+        //State Machine
+        routerOutputStateMgmt(i).io.swAllocGranted  := orR(Vec (readyToXmit.map( a=> a(i))).toBits)  //This should be routed from the input side
+        routerOutputStateMgmt(i).io.creditsAvail    := outCredits(deqVCPort) //&& ~almostOuts(deqVCPort)
+        // ------------------- 
+ 
 	
 		// Credits
+		// io.outChannels(i).flitValid := (routerOutputStateMgmt(i).io.currentState >= VCRouterOutputState.rdyToXmit) && ~(routerOutputStateMgmt(i).io.currentState === VCRouterOutputState.hold)
+		val flitValidReg = Reg(Bool())
+		flitValidReg := routerOutputStateMgmt(i).io.swAllocGranted //consumeCredit(i)
+		io.outChannels(i).flitValid := flitValidReg
+
 		creditCons.zipWithIndex.foreach{ case(b,j) =>
-			b.io.inValid := regSWAllocValid && (deqVCPort === UInt(j))
+			// b.io.inConsume     := (deqVCPort === UInt(j)) && ((routerOutputStateMgmt(i).io.currentState === VCRouterOutputState.rdyToXmit) || (routerOutputStateMgmt(i).io.currentState === VCRouterOutputState.xmit))  //&& outCredits(routingOutReg.getVCPort())
+            b.io.inConsume :=    routerOutputStateMgmt(i).io.swAllocGranted &&  (deqVCPort === UInt(j))
 		}
 		
 		creditCons.zipWithIndex.foreach{ case(b, j) => 
-			b.io.inCredit <> io.outChannels(i).credit(j)
+			b.io.inCredit.grant := io.outChannels(i).credit(j).grant
 		}
 	}
 }

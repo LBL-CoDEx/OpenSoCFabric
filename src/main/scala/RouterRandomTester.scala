@@ -39,8 +39,8 @@ class RouterRandomTester(c: SimpleRouterTestWrapper, parms: Parameters) extends 
 	
 	for (i <- 0 until c.numInChannels) {
 		poke(c.io.inChannels(i).flit, zeroFlit)
-		poke(c.io.inChannels(i).credit.ready, 0)
-		poke(c.io.outChannels(i).credit.valid, 1)
+		poke(c.io.inChannels(i).flitValid, 0)
+		poke(c.io.outChannels(i).credit.grant, 1)
 		
 	}
 	step(1)
@@ -117,7 +117,7 @@ class RouterRandomTester(c: SimpleRouterTestWrapper, parms: Parameters) extends 
 	for(port <- 0 until portsToDrive){
 
 		//if credit valid is low, then the port cannot accept flits (i.e. out of credits!)
-		var creditValid = peek(c.io.inChannels(port).credit.valid) 
+		var creditValid = peek(c.io.inChannels(port).credit.grant) 
 
 		//port is ready, and this port is not yet done with all iterations
 		if(((creditValid > 0) && (iterationCountPerPort(port) < iterationCount)) || (iterationCountPerPort(port) == 0) ){
@@ -128,7 +128,7 @@ class RouterRandomTester(c: SimpleRouterTestWrapper, parms: Parameters) extends 
 				packetInjTime(pID)= cycleCount
 				println("adding pid: ", pID)
 			}
-			poke(c.io.inChannels(port).credit.ready, 1)
+			poke(c.io.inChannels(port).flitValid, 1)
 			poke(c.io.inChannels(port).flit, myFlit)
 			
 			//track where we are in this packet
@@ -142,7 +142,7 @@ class RouterRandomTester(c: SimpleRouterTestWrapper, parms: Parameters) extends 
 		}else {
 			//port not ready... drive all zeros and deassert credit ready
 			poke(c.io.inChannels(port).flit, zeroFlit)
-			poke(c.io.inChannels(port).credit.ready, 0)
+			poke(c.io.inChannels(port).flitValid, 0)
 		}
 	}
 		step(1)
@@ -167,7 +167,7 @@ class RouterRandomTester(c: SimpleRouterTestWrapper, parms: Parameters) extends 
 		}
 
 		//look for valid flit on output port
-		var validFlit = peek(c.io.outChannels(port).credit.ready) > 0
+		var validFlit = peek(c.io.outChannels(port).flitValid) > 0
 		if(validFlit){
 			//determine if flit is head, then translate it as appropriate 
 			var myFlit = peek(c.io.outChannels(port).flit)
@@ -188,7 +188,7 @@ class RouterRandomTester(c: SimpleRouterTestWrapper, parms: Parameters) extends 
 	////we've driven all flits, so make sure all inputs are set to zero
 	for(port <-0 until c.numInChannels){
 		poke(c.io.inChannels(port).flit, zeroFlit)
-		poke(c.io.inChannels(port).credit.ready, 0)
+		poke(c.io.inChannels(port).flitValid, 0)
 	}
 
 
@@ -212,17 +212,17 @@ class RouterRandomTester(c: SimpleRouterTestWrapper, parms: Parameters) extends 
 	var myBodyFlit = peek(c.io.bodyFlitOut)
 	step(1)
 	for (i <- 0 until c.numPorts) {
-		poke(c.io.ports(i).in.credit.ready, 0)
-		poke(c.io.ports(i).out.credit.valid, 1)
+		poke(c.io.ports(i).in.flitValid, 0)
+		poke(c.io.ports(i).out.credit.grant, 1)
 	}
-	poke(c.io.ports(1).in.credit.ready, 1)
+	poke(c.io.ports(1).in.flitValid, 1)
 	poke(c.io.ports(1).in.flit, myHeadFlit)
 	step(1)
-	poke(c.io.ports(1).in.credit.ready, 1)
+	poke(c.io.ports(1).in.flitValid, 1)
 	poke(c.io.ports(1).in.flit, myBodyFlit)
 	step(1)
 	poke(c.io.ports(1).in.flit, zeroFlit)
-	poke(c.io.ports(1).in.credit.ready, 0)
+	poke(c.io.ports(1).in.flitValid, 0)
 	peek(c.io.ports(3).out.flit)
 	step(1)
 	peek(c.io.ports(3).out.flit)

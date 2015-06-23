@@ -38,7 +38,7 @@ class OpenSoC_CMeshTester_Combined_Packet_C2(c: OpenSoC_CMesh[Packet], parms: Pa
 	
 	for (i <- 0 until c.numPorts) {
 		poke(c.io.ports(i).in.packetValid, 0)
-		poke(c.io.ports(i).out.credit.valid, 1)
+		poke(c.io.ports(i).out.credit.grant, 1)
 		
 	}
 	step(1)
@@ -207,7 +207,7 @@ class OpenSoC_CMeshTester_Combined_Packet_C2(c: OpenSoC_CMesh[Packet], parms: Pa
 		}
 
 		//look for valid flit on output port
-		var validFlit = peek(c.io.ports(port).out.credit.ready) > 0
+		var validFlit = peek(c.io.ports(port).out.flitValid) > 0
 		if(validFlit){
 			//determine if flit is head, then translate it as appropriate 
 			var myFlit = peek(c.io.ports(port).out.flit)
@@ -268,17 +268,17 @@ class OpenSoC_CMeshTester_Combined_Packet_C2(c: OpenSoC_CMesh[Packet], parms: Pa
 	var myBodyFlit = peek(c.io.bodyFlitOut)
 	step(1)
 	for (i <- 0 until c.numPorts) {
-		poke(c.io.ports(i).in.credit.ready, 0)
-		poke(c.io.ports(i).out.credit.valid, 1)
+		poke(c.io.ports(i).in.flitValid, 0)
+		poke(c.io.ports(i).out.credit.grant, 1)
 	}
-	poke(c.io.ports(1).in.credit.ready, 1)
+	poke(c.io.ports(1).in.flitValid, 1)
 	poke(c.io.ports(1).in.flit, myHeadFlit)
 	step(1)
-	poke(c.io.ports(1).in.credit.ready, 1)
+	poke(c.io.ports(1).in.flitValid, 1)
 	poke(c.io.ports(1).in.flit, myBodyFlit)
 	step(1)
 	poke(c.io.ports(1).in.flit, zeroFlit)
-	poke(c.io.ports(1).in.credit.ready, 0)
+	poke(c.io.ports(1).in.flitValid, 0)
 	peek(c.io.ports(3).out.flit)
 	step(1)
 	peek(c.io.ports(3).out.flit)

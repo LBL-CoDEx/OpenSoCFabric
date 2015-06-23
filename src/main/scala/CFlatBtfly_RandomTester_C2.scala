@@ -41,7 +41,7 @@ class OpenSoC_CFlatBtflyTester_Random_C2(c: OpenSoC_CFlatBfly[Flit], parms: Para
 	for (i <- 0 until c.numPorts) {
 		poke(c.io.ports(i).in.packet, zeroFlit)
 		poke(c.io.ports(i).in.packetValid, 0)
-		poke(c.io.ports(i).out.credit.valid, 1)
+		poke(c.io.ports(i).out.credit.grant, 1)
 		
 	}
 	step(1)
@@ -180,12 +180,12 @@ class OpenSoC_CFlatBtflyTester_Random_C2(c: OpenSoC_CFlatBfly[Flit], parms: Para
   while((iterationCountPerPort.min < iterationCount) || (cycleCount < totalCycleCount)){
 	for(port <- 0 until c.numPorts){
 
-		//if credit valid is low, then the port cannot accept flits (i.e. out of credits!)
+		//if credit.grant is low, then the port cannot accept flits (i.e. out of credits!)
 		var packetReady = peek(c.io.ports(port).in.packetReady) 
 
 		//port is ready, and this port is not yet done with all iterations
 		if((packetReady > 0) && (iterationCountPerPort(port) < iterationCount)){
-			//drive flit w/ credit ready
+			//drive flit w/ flitValid
 			var myFlit = flits(port)(iterationCountPerPort(port))(packetIndexPerPort(port))
 			if(packetIndexPerPort(port) == 0){
 				//var pID = (myFlit(0).toInt & 0x0003FC00) >> 10 //2x2
@@ -206,7 +206,7 @@ class OpenSoC_CFlatBtflyTester_Random_C2(c: OpenSoC_CFlatBfly[Flit], parms: Para
 				iterationCountPerPort(port) = iterationCountPerPort(port) + 1
 			}
 		}else {
-			//port not ready... drive all zeros and deassert credit ready
+			//port not ready... drive all zeros and deassert flitValid
 			poke(c.io.ports(port).in.packet, zeroFlit)
 			poke(c.io.ports(port).in.packetValid, 0)
 		}
@@ -242,7 +242,7 @@ class OpenSoC_CFlatBtflyTester_Random_C2(c: OpenSoC_CFlatBfly[Flit], parms: Para
 		}
 
 		//look for valid flit on output port
-		var validFlit = peek(c.io.ports(port).out.credit.ready) > 0
+		var validFlit = peek(c.io.ports(port).out.flitValid) > 0
 		if(validFlit){
 			//determine if flit is head, then translate it as appropriate 
 			var myFlit = peek(c.io.ports(port).out.flit)
@@ -298,57 +298,7 @@ class OpenSoC_CFlatBtflyTester_Random_C2(c: OpenSoC_CFlatBfly[Flit], parms: Para
 	routerUtilFile.close()
 	channelUtilFile.close()
 	latencyUtilFile.close()
-	//expect(c.io.ports(1).out.flit, myHeadFlit)
-	//expect(c.io.ports(1).out.flit, myBodyFlit)
 
-	//drive a flit on port 1
-	headFlitMap("Dest_0") 	= 1
-	headFlitMap("Dest_1") 	= 1
-	headFlitMap("Dest_2") 	= 0
-	headFlitMap("Dest_3") 	= 0
-	headFlitMap("isTail") 	= 0
-	headFlitMap("packetID") = 5
-	bodyFlitMap("packetID") = 5
-	bodyFlitMap("isTail") 	= 1
-	poke(c.io.headFlitIn, headFlitMap.values.toArray)
-	poke(c.io.bodyFlitIn, bodyFlitMap.values.toArray)
-	step(1)
-	var myHeadFlit = peek(c.io.headFlitOut)
-	var myBodyFlit = peek(c.io.bodyFlitOut)
-	step(1)
-	for (i <- 0 until c.numPorts) {
-		poke(c.io.ports(i).in.packetValid, 0)
-		poke(c.io.ports(i).out.credit.valid, 1)
-	}
-	poke(c.io.ports(0).in.packetValid, 1)
-	poke(c.io.ports(0).in.packet, myHeadFlit)
-	step(1)
-	poke(c.io.ports(0).in.packetValid, 1)
-	poke(c.io.ports(0).in.packet, myBodyFlit)
-	step(1)
-	poke(c.io.ports(0).in.packet, zeroFlit)
-	poke(c.io.ports(0).in.packetValid, 0)
-	peek(c.io.ports(6).out.flit)
-	step(1)
-	peek(c.io.ports(6).out.flit)
-	step(1)
-	peek(c.io.ports(6).out.flit)
-	step(1)
-	peek(c.io.ports(6).out.flit)
-	step(1)
-	peek(c.io.ports(6).out.flit)
-	step(1)
-	peek(c.io.ports(6).out.flit)
-	step(1)
-	peek(c.io.ports(6).out.flit)
-	step(1)
-	peek(c.io.ports(6).out.flit)
-	step(1)
-	peek(c.io.ports(6).out.flit)
-	step(1)
-//	expect(c.io.ports(6).out.flit, myHeadFlit)
-	step(1)	
-//	expect(c.io.ports(6).out.flit, myBodyFlit)
 	step(1)	
 	
 }

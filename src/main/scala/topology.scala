@@ -160,7 +160,7 @@ class CMesh(parms: Parameters) extends Topology(parms) {
 			if (consumerrouter != coord) { 						// If they are equal it means that there is no appropriate neighbor router.
 				routermap(consumerrouter).io.inChannels(i) 	<> routermap(coord).io.outChannels(i) 
 				busProbesMap(coord).io.inFlit(i) 			:= routermap(coord).io.outChannels(i).flit  
-				busProbesMap(coord).io.inValid(i) 			:= routermap(coord).io.outChannels(i).credit.ready
+				busProbesMap(coord).io.inValid(i) 			:= routermap(coord).io.outChannels(i).flitValid
 				busProbesMap(coord).io.routerCord 			:= UInt(consumerrouter.product)
 				io.cyclesChannelBusy((n*routerRadix) + i)	:= busProbesMap(coord).io.cyclesChannelBusy(i)
 
@@ -304,7 +304,7 @@ class VCCMesh(parms: Parameters) extends VCTopology(parms) {
 			if (consumerrouter != coord) { 						// If they are equal it means that there is no appropriate neighbor router.
 				routermap(consumerrouter).io.inChannels(i) 	<> routermap(coord).io.outChannels(i) 
 				busProbesMap(coord).io.inFlit(i) 			:= routermap(coord).io.outChannels(i).flit  
-				busProbesMap(coord).io.inValid(i) 			:= routermap(coord).io.outChannels(i).credit.map(_.ready).reduceLeft( _ || _ )
+				busProbesMap(coord).io.inValid(i) 			:= routermap(coord).io.outChannels(i).flitValid
 				busProbesMap(coord).io.routerCord 			:= UInt(consumerrouter.product)
 				io.cyclesChannelBusy((n*routerRadix) + i)	:= busProbesMap(coord).io.cyclesChannelBusy(i)
 
@@ -479,7 +479,7 @@ class CFlatBfly(parms: Parameters) extends Topology(parms) {
 			println("Connecting router "+ key +  " physical port "+ i + " to consumer router " + targetCoord + " port "+ targetInputConnVal + " router radix= " + routerRadix)
 			
 			busProbesMap(key).io.inFlit(i) 		:= value.io.outChannels(i).flit  
-			busProbesMap(key).io.inValid(i) 		:= value.io.outChannels(i).credit.ready
+			busProbesMap(key).io.inValid(i) 		:= value.io.outChannels(i).flitValid
 			busProbesMap(key).io.routerCord 		:= UInt(targetCoord.product)
 			//io.cyclesChannelBusy((n*routerRadix) + i)	:= busProbesMap(coord).io.cyclesChannelBusy(i)
 		}
@@ -614,7 +614,7 @@ class VCCFlatBfly(parms: Parameters) extends VCTopology(parms) {
 			println("Connecting router "+ key +  " physical port "+ i + " to consumer router " + targetCoord + " port "+ targetInputConnVal + " router radix= " + routerRadix)
 			
 			busProbesMap(key).io.inFlit(i) 		:= value.io.outChannels(i).flit  
-			busProbesMap(key).io.inValid(i) 		:= value.io.outChannels(i).credit.map(_.ready).reduceLeft( _ || _ )
+			busProbesMap(key).io.inValid(i) 		:= value.io.outChannels(i).flitValid
 			busProbesMap(key).io.routerCord 		:= UInt(targetCoord.product)
 			//io.cyclesChannelBusy((n*routerRadix) + i)	:= busProbesMap(coord).io.cyclesChannelBusy(i)
 		}

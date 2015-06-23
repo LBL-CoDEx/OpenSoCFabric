@@ -79,8 +79,8 @@ class SimpleVCRouterTester (c: SimpleVCRouterTestWrapper) extends Tester(c) {
 	var zeroFlit = peek(c.io.bodyFlitOut)
 
 	for (i <- 0 until c.numInChannels) {
-		poke(c.io.inChannels(i).credit.ready,  0)
-		poke(c.io.inChannels(i).credit.valid,  0)
+		poke(c.io.inChannels(i).flitValid,  0)
+		poke(c.io.inChannels(i).credit.grant,  0)
 		// poke(c.io.inChannels(i).credit.isTail, 0)
 	}
 	step(1)
@@ -102,17 +102,17 @@ class SimpleVCRouterTester (c: SimpleVCRouterTestWrapper) extends Tester(c) {
 	
 	step(1)
 	for (i <- 0 until c.numInChannels) {
-		poke(c.io.inChannels(i).credit.ready, 0)
-		poke(c.io.outChannels(i).credit.valid, 0)
+		poke(c.io.inChannels(i).flitValid, 0)
+		poke(c.io.outChannels(i).credit.grant, 0)
 	}
-	poke(c.io.inChannels(0).credit.ready, 1)
+	poke(c.io.inChannels(0).flitValid, 1)
 	poke(c.io.inChannels(0).flit, myHeadFlit)
 	step(1)
-	poke(c.io.inChannels(0).credit.ready, 1)
+	poke(c.io.inChannels(0).flitValid, 1)
 	poke(c.io.inChannels(0).flit, myBodyFlit)
 	step(1)
 	poke(c.io.inChannels(0).flit, zeroFlit)
-	poke(c.io.inChannels(0).credit.ready, 0)
+	poke(c.io.inChannels(0).flitValid, 0)
 	step(routerLatencyInClks-2)
 	expect(c.io.outChannels(1).flit, myHeadFlit)
 	step(1)
@@ -143,20 +143,20 @@ class SimpleVCRouterTester (c: SimpleVCRouterTestWrapper) extends Tester(c) {
 	
 	step(1)
 	for (i <- 0 until c.numInChannels) {
-		poke(c.io.inChannels(i).credit.ready, 0)
-		poke(c.io.outChannels(i).credit.valid, 0)
+		poke(c.io.inChannels(i).flitValid, 0)
+		poke(c.io.outChannels(i).credit.grant, 0)
 	}
-	poke(c.io.inChannels(0).credit.ready, 1)
+	poke(c.io.inChannels(0).flitValid, 1)
 	poke(c.io.inChannels(0).flit, myHeadFlit)
 	step(1)
-	poke(c.io.inChannels(0).credit.ready, 1)
+	poke(c.io.inChannels(0).flitValid, 1)
 	poke(c.io.inChannels(0).flit, myBodyFlit)
 	step(1)
-	poke(c.io.inChannels(0).credit.ready, 1)
+	poke(c.io.inChannels(0).flitValid, 1)
 	poke(c.io.inChannels(0).flit, my2ndBodyFlit)
 	step(1)
 	poke(c.io.inChannels(0).flit, zeroFlit)
-	poke(c.io.inChannels(0).credit.ready, 0)
+	poke(c.io.inChannels(0).flitValid, 0)
 	expect(c.io.outChannels(3).flit, myHeadFlit)
 	step(1)
 	expect(c.io.outChannels(3).flit, myBodyFlit)
@@ -190,21 +190,21 @@ class SimpleVCRouterTester (c: SimpleVCRouterTestWrapper) extends Tester(c) {
 	
 	//Drive all head flits	
 	for(i <- 0 until c.numInChannels){
-		poke(c.io.inChannels(i).credit.ready, 1)
-		poke(c.io.outChannels(i).credit.valid, 1)
+		poke(c.io.inChannels(i).flitValid, 1)
+		poke(c.io.outChannels(i).credit.grant, 1)
 		poke(c.io.inChannels(i).flit, packets(i)(0))
 	}
 	step (1)
 	//Drive all body flits	
 	for(i <- 0 until c.numInChannels){
-		poke(c.io.inChannels(i).credit.ready, 1)
-		poke(c.io.outChannels(i).credit.valid, 1)
+		poke(c.io.inChannels(i).flitValid, 1)
+		poke(c.io.outChannels(i).credit.grant, 1)
 		poke(c.io.inChannels(i).flit, packets(i)(1))
 	}
 	step (1)
 	for(i <- 0 until c.numInChannels){
-		poke(c.io.inChannels(i).credit.ready, 0)
-		poke(c.io.outChannels(i).credit.valid, 0)
+		poke(c.io.inChannels(i).flitValid, 0)
+		poke(c.io.outChannels(i).credit.grant, 0)
 		poke(c.io.inChannels(i).flit, zeroFlit)
 	}
 	step(4)

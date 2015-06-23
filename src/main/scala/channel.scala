@@ -3,33 +3,24 @@ package OpenSoC
 import Chisel._
 
 abstract class FlitCommon(val parms: Parameters) extends Bundle {
-	// val flitWidth = parms.get[Int]("flitWidth")
-	val packetIDWidth = parms.get[Int]("packetIDWidth")
-	val numVCs = parms.get[Int]("numVCs")
+	val packetIDWidth   = parms.get[Int]("packetIDWidth")
+	val numVCs          = parms.get[Int]("numVCs")
 
-	val packetID = UInt(width = packetIDWidth)
-	// val isHead = Bool(false)  // Taken care of with BitUnion
-	val isTail = Bool()
+	val packetID        = UInt(width = packetIDWidth)
+	val isTail          = Bool()
 	
-	// println("numVCs: " + numVCs)
-
-	// if (numVCs != 0) {
-		val vcPort = UInt(width = log2Up(numVCs))
-	// }
+	val vcPort          = UInt(width = log2Up(numVCs))
 	
-	// val headerWidth = packetIDWidth + isTail.width //+ isHead.width
-
-	// override def clone = { new FlitCommon(parms).asInstanceOf[this.type] }
-	// override val width = flitWidth - 1
 }
 
 class HeadFlit(parms: Parameters) extends FlitCommon(parms) {
 	val packetTypeWidth = parms.get[Int]("packetTypeWidth")
-	val destCordWidth = parms.get[Int]("destCordWidth")
-	val destCordDim = parms.get[Int]("destCordDim")
+	val destCordDim     = parms.get[Int]("destCordDim")
+	val destCordWidth   = parms.get[Int]("destCordWidth")
 	
-	val packetType = UInt(width = packetTypeWidth)
-	val destination = Vec.fill(destCordDim){UInt(width = destCordWidth)}
+	val packetType      = UInt(width = packetTypeWidth)
+	val destination     = Vec.fill(destCordDim){UInt(width = destCordWidth)}
+
 	
 	/*
 	val RoutingMode = UInt(width = RoutingModeWidth)
@@ -41,20 +32,20 @@ class HeadFlit(parms: Parameters) extends FlitCommon(parms) {
 }
 
 class BodyFlit(parms: Parameters) extends FlitCommon(parms) {
-	val flitIDWidth = parms.get[Int]("flitIDWidth")
-	val payloadWidth = parms.get[Int]("payloadWidth")
+	val flitIDWidth     = parms.get[Int]("flitIDWidth")
+	val payloadWidth    = parms.get[Int]("payloadWidth")
 	
 
-	val flitID = UInt(width = flitIDWidth)
-	val payload = UInt(width = payloadWidth)
+	val flitID          = UInt(width = flitIDWidth)
+	val payload         = UInt(width = payloadWidth)
 
 	override def clone = { new BodyFlit(parms).asInstanceOf[this.type] }
 }
 
 class Flit(parms: Parameters) extends Bundle {
-	val union = new BitUnion(Map("Head" -> new HeadFlit(parms), "Body" -> new BodyFlit(parms)))
-	val x = Chisel.UInt(width = union.width)
-	val numVCs = parms.get[Int]("numVCs")
+	val union   = new BitUnion(Map("Head" -> new HeadFlit(parms), "Body" -> new BodyFlit(parms)))
+	val x       = Chisel.UInt(width = union.width)
+	val numVCs  = parms.get[Int]("numVCs")
 
 	def asHead(dummy: Int = 0) : HeadFlit = union.unpack[HeadFlit]("Head", x)
 	def asBody(dummy: Int = 0) : BodyFlit = union.unpack[BodyFlit]("Body", x)
@@ -115,41 +106,43 @@ object Flit {
 }
 
 class ChannelVC(parms: Parameters) extends Bundle {
-	val numVCs = parms.get[Int]("numVCs")
+	val numVCs  = parms.get[Int]("numVCs")
 	
-	val flit = new Flit(parms).asInput
-	val credit = Vec.fill(numVCs) { new Credit() } // Direction as Output in class def
+	val flit    	= new Flit(parms).asInput
+	val flitValid	= Bool(INPUT)
+	val credit  	= Vec.fill(numVCs) { new Credit() } // Direction as Output in class def
 }
 
 class Channel(parms: Parameters) extends Bundle {
-	val flit = new Flit(parms).asInput
-	val credit = new Credit() // Direction as Output in class def
+	val flit		= new Flit(parms).asInput
+	val flitValid	= Bool(INPUT)
+	val credit		= new Credit() // Direction as Output in class def
 	
 }
 
 class ReplaceVCPort(parms: Parameters) extends Module(parms) {
 	val numVCs = parms.get[Int]("numVCs")
 
-	val io = new Bundle {
-		val oldFlit = new Flit(parms).asInput
-		val newVCPort = UInt(INPUT, log2Up(numVCs))
-		val newFlit = new Flit(parms).asOutput
+	val io   = new Bundle {
+		val oldFlit     = new Flit(parms).asInput
+		val newVCPort   = UInt(INPUT, log2Up(numVCs))
+		val newFlit     = new Flit(parms).asOutput
 	}
 
-	val h = new HeadFlit(parms)
-	h.packetID := io.oldFlit.asHead().packetID
-	h.isTail := io.oldFlit.asHead().isTail
-	h.vcPort := io.newVCPort
-	h.packetType := io.oldFlit.asHead().packetType
+	val h           = new HeadFlit(parms)
+	h.packetID      := io.oldFlit.asHead().packetID
+	h.isTail        := io.oldFlit.asHead().isTail
+	h.vcPort        := io.newVCPort
+	h.packetType    := io.oldFlit.asHead().packetType
 	h.destination.zipWithIndex.foreach{ case (e,i) => e := io.oldFlit.asHead().destination(i) }
 
-	val b = new BodyFlit(parms)
-	b.packetID := io.oldFlit.asBody().packetID
-	b.isTail := io.oldFlit.asBody().isTail
-	b.vcPort := io.newVCPort
+	val b           = new BodyFlit(parms)
+	b.packetID      := io.oldFlit.asBody().packetID
+	b.isTail        := io.oldFlit.asBody().isTail
+	b.vcPort        := io.newVCPort
 
-	b.flitID := io.oldFlit.asBody().flitID
-	b.payload := io.oldFlit.asBody().payload
+	b.flitID        := io.oldFlit.asBody().flitID
+	b.payload       := io.oldFlit.asBody().payload
 
 	val flitVCMux = Chisel.Module( new MuxN[Flit](
 		new Flit(parms), parms.child("FlitVCMux", Map(
@@ -159,7 +152,59 @@ class ReplaceVCPort(parms: Parameters) extends Module(parms) {
 
 	flitVCMux.io.ins(1) := Flit.head(h)
 	flitVCMux.io.ins(0) := Flit.body(b)
-	flitVCMux.io.sel := io.oldFlit.isHead()
-	io.newFlit := flitVCMux.io.out
+	flitVCMux.io.sel    := io.oldFlit.isHead()
+	io.newFlit          := flitVCMux.io.out
 
 }
+/*
+class UpdateBreadCrumb(parms: Parameters) extends Module(parms) {
+
+	val destCordDim     = parms.get[Int]("destCordDim")
+	val destCordWidth   = parms.get[Int]("destCordWidth")
+	val io = new Bundle {
+		val oldFlit         = new Flit(parms).asInput
+		val routerID        = Vec.fill(destCordDim){UInt(width = destCordWidth)}.asInput
+        val routerIDValid   = UInt(INPUT, width=1)
+		val newFlit         = new Flit(parms).asOutput
+	}
+
+	val h           = new HeadFlit(parms)
+    //h.breadCrumbIndex := UInt(0)
+	h.packetID      := io.oldFlit.asHead().packetID
+	h.isTail        := io.oldFlit.asHead().isTail
+	h.vcPort        := io.oldFlit.asHead().vcPort
+	h.packetType    := io.oldFlit.asHead().packetType
+	h.destination.zipWithIndex.foreach{ case (e,i) => e := io.oldFlit.asHead().destination(i) }
+    for (i <- 0 until h.breadCrumb.size){h.breadCrumb(i) := Vec.fill(destCordDim){UInt(0)}}
+
+     //   h.breadCrumb                    := io.oldFlit.asHead().breadCrumb
+     //   h.breadCrumbIndex               := io.oldFlit.asHead().breadCrumbIndex
+    
+    when(io.routerIDValid === UInt(1)){
+        h.breadCrumb(h.breadCrumbIndex) := io.routerID
+        h.breadCrumbIndex               := io.oldFlit.asHead().breadCrumbIndex + UInt(1)
+    }.otherwise{
+        h.breadCrumb(h.breadCrumbIndex) := io.oldFlit.asHead().breadCrumb(h.breadCrumbIndex)
+        h.breadCrumbIndex               := io.oldFlit.asHead().breadCrumbIndex //h.breadCrumbIndex
+    }
+
+	val b = new BodyFlit(parms)
+	b.packetID  := io.oldFlit.asBody().packetID
+	b.isTail    := io.oldFlit.asBody().isTail
+	b.vcPort    := io.oldFlit.asBody().vcPort
+
+	b.flitID    := io.oldFlit.asBody().flitID
+	b.payload   := io.oldFlit.asBody().payload
+
+	val flitVCMux = Chisel.Module( new MuxN[Flit](
+		new Flit(parms), parms.child("FlitVCMux", Map(
+			("n"->Soft(2))
+		))
+	))
+
+	flitVCMux.io.ins(1) := Flit.head(h)
+	flitVCMux.io.ins(0) := Flit.body(b)
+	flitVCMux.io.sel    := io.oldFlit.isHead()
+	io.newFlit          := flitVCMux.io.out
+
+}*/

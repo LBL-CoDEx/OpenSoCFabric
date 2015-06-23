@@ -88,7 +88,7 @@ class PacketToFlit(parms: Parameters) extends InputToFlit[Packet](parms, p => ne
 	val packetTypeWidth	= parms.get[Int]("packetTypeWidth")
 	val destCordWidth	= parms.get[Int]("destCordWidth")
 	val numVCs			= parms.get[Int]("numVCs")
-	val Dim				= parms.get[Int]("Dim")
+	val Dim				= parms.get[Int]("TopologyDimension")
 	val C 				= parms.get[Int]("Concentration") // Processors (endpoints) per router.
 
 	val flitWidth 		= Flit.fromBits(UInt(0), parms).getWidth()

@@ -25,13 +25,10 @@ abstract class Arbiter(parms: Parameters) extends Module(parms) {
 }
 
 class RRArbiter(parms: Parameters) extends Arbiter(parms) {
-	val lastGrant = Chisel.Reg(init=UInt(1, width=numReqs))
+	val nextGrant = Chisel.Reg(init=UInt( (1 << (numReqs-1)) , width=numReqs))
 	
-	val requestsBitsVec = Vec.fill(io.requests.length) { UInt(width = 1) }
-	requestsBitsVec.zipWithIndex.foreach{ case (e, i) => e := io.requests(i).request.toUInt() }
-	val requestsBits = UInt(width = io.requests.length)
-	requestsBits := requestsBitsVec.toBits
-	
+	val requestsBits = Cat( (0 until numReqs).map(io.requests(_).request.toUInt() ).reverse )
+
 	val passSelectL0 = UInt(width = numReqs + 1)
 	val passSelectL1 = UInt(width = numReqs)
 	val winner = UInt(width = numReqs)
@@ -39,33 +36,31 @@ class RRArbiter(parms: Parameters) extends Arbiter(parms) {
  	passSelectL1 := UInt(0)
  	winner := UInt(0)
 
- 	val lastGrantUInt = UInt(width = log2Up(numReqs))
- 	lastGrantUInt := Chisel.OHToUInt(lastGrant)
+ 	val nextGrantUInt = UInt(width = log2Up(numReqs))
+ 	nextGrantUInt := Chisel.OHToUInt(nextGrant)
  	val lockRelease = Bool()
- 	lockRelease := io.requests(lastGrantUInt).releaseLock
+ 	lockRelease := io.requests(nextGrantUInt).releaseLock
 
-	/* Check to make sure resource is not busy */
-	when (~io.resource.ready) {
-		winner := UInt(0)
-	} .otherwise {
-		/* Locking logic encapsulating Round Robin logic */
-		when ( lastGrant(lastGrantUInt) && requestsBits(lastGrantUInt) && ~lockRelease ) {
-			/* If Locked (i.e. request granted but still requesting)
-				make sure to keep granting to that port */
-			winner := lastGrant
-		} .otherwise {
-			/* Otherwise, select next requesting port */
-			// passSelectL0 := Cat(Bool(false).toUInt, ~requestsBits) + Cat(Bool(false).toUInt, Cat(lastGrant(numReqs-2, 0), lastGrant(numReqs-1)))
-			passSelectL0 := Cat(Bool(false).toUInt, ~requestsBits) + Cat(Bool(false).toUInt, lastGrant(numReqs-2, 0), lastGrant(numReqs-1))
-			passSelectL1 := ~requestsBits + Bool(true).toUInt
-			winner := Mux(passSelectL0(numReqs), passSelectL1, passSelectL0(numReqs-1, 0)) & requestsBits
-			lastGrant := Mux(orR(winner), winner, lastGrant)
-		}
-	}
+  //  when(~io.resource.ready && ~lockRelease){
+  //      winner := nextGrant
+  //  }.otherwise {
+    	/* Locking logic encapsulating Round Robin logic */
+    	when ( nextGrant(nextGrantUInt) && requestsBits(nextGrantUInt) && ~lockRelease ) {
+    		/* If Locked (i.e. request granted but still requesting)
+    			make sure to keep granting to that port */
+    		winner := nextGrant
+    	} .otherwise {
+    		/* Otherwise, select next requesting port */
+    		passSelectL0 := Cat(Bool(false).toUInt, ~requestsBits) + Cat(Bool(false).toUInt, nextGrant(numReqs-2, 0), nextGrant(numReqs-1))
+    		passSelectL1 := ~requestsBits + Bool(true).toUInt
+    		winner := Mux(passSelectL0(numReqs), passSelectL1, passSelectL0(numReqs-1, 0)) & requestsBits
+    		nextGrant := Mux(orR(winner), winner, nextGrant)
+    	}
+    //}
 	
-	(0 until numReqs).map(i => io.requests(i).grant := winner(i).toBool())
-	io.chosen := Chisel.OHToUInt(winner)
-	io.resource.valid := io.requests(io.chosen).request & (winner != UInt(0))
+	(0 until numReqs).map(i => io.requests(i).grant := winner(i).toBool() && io.resource.ready) 
+	io.chosen := Chisel.OHToUInt(winner) 
+	io.resource.valid := io.requests(io.chosen).grant && io.resource.ready //(winner != UInt(0))
 }
 
 class RRArbiterTest(c: RRArbiter) extends Tester(c) {
@@ -75,41 +70,71 @@ class RRArbiterTest(c: RRArbiter) extends Tester(c) {
 
 	val numPorts : Int = c.numReqs
 
-	// val inputArray = Array(Integer.parseInt("01001001", 2),
-	// 	Integer.parseInt("01001001", 2),
-	// 	Integer.parseInt("01001001", 2),
-	// 	Integer.parseInt("00001001", 2),
-	// 	Integer.parseInt("11001000", 2),
-	// 	Integer.parseInt("11001001", 2),
-	// 	Integer.parseInt("01001001", 2),
-	// 	Integer.parseInt("01001001", 2))
-	val inputArray = Array(Integer.parseInt("11111111", 2),
-		Integer.parseInt("11111111", 2),
-		Integer.parseInt("11111111", 2),
-		Integer.parseInt("11111111", 2),
-		Integer.parseInt("11111111", 2),
-		Integer.parseInt("11111111", 2),
-		Integer.parseInt("11111111", 2),
-		Integer.parseInt("11111111", 2))
-	val outputArray = Array(Integer.parseInt("00000000", 2),
-		Integer.parseInt("00001000", 2),
-		Integer.parseInt("01000000", 2),
+	val inputArray = Array(
 		Integer.parseInt("00000001", 2),
+		Integer.parseInt("00000001", 2),
+		Integer.parseInt("00000001", 2),
+		Integer.parseInt("00000000", 2),
+		Integer.parseInt("00100001", 2),
+		Integer.parseInt("00000100", 2),
+		Integer.parseInt("10000000", 2),
+		Integer.parseInt("00000000", 2),
+		Integer.parseInt("00000001", 2),
+		Integer.parseInt("00000010", 2),
+		Integer.parseInt("00000100", 2),
 		Integer.parseInt("00001000", 2),
 		Integer.parseInt("00001000", 2),
+		Integer.parseInt("00010000", 2),
+		Integer.parseInt("00100000", 2),
 		Integer.parseInt("01000000", 2),
-		Integer.parseInt("00000001", 2))
-	val lockArray = Array(Integer.parseInt("00000000", 2),
+		Integer.parseInt("10000000", 2),
+		Integer.parseInt("00000000", 2)
+		)
+	val lockArray = Array(
+		Integer.parseInt("00000000", 2),
+		Integer.parseInt("11111111", 2),
+		Integer.parseInt("11111111", 2),
+		Integer.parseInt("11111111", 2),
+		Integer.parseInt("11111110", 2),
+		Integer.parseInt("11011111", 2),
+		Integer.parseInt("11111011", 2),
+		Integer.parseInt("01111111", 2),
+		Integer.parseInt("11111111", 2),
+		Integer.parseInt("11111110", 2),
+		Integer.parseInt("11111101", 2),
+		Integer.parseInt("11111011", 2),
+		Integer.parseInt("11111111", 2),
+		Integer.parseInt("11110111", 2),
+		Integer.parseInt("11101111", 2),
+		Integer.parseInt("11011111", 2),
+		Integer.parseInt("10111111", 2),
+		Integer.parseInt("01111111", 2),
+		Integer.parseInt("11111111", 2),
+		Integer.parseInt("11111111", 2)
+	)
+	val outputArray = Array(
+		Integer.parseInt("00000000", 2),
+		Integer.parseInt("00000001", 2),
 		Integer.parseInt("00000000", 2),
 		Integer.parseInt("00000000", 2),
+		Integer.parseInt("00100000", 2),
+		Integer.parseInt("00000100", 2),
+		Integer.parseInt("10000000", 2),
 		Integer.parseInt("00000000", 2),
-		Integer.parseInt("00000000", 2),
+		Integer.parseInt("00000001", 2),
+		Integer.parseInt("00000010", 2),
+		Integer.parseInt("00000100", 2),
 		Integer.parseInt("00001000", 2),
-		Integer.parseInt("00000000", 2),
-		Integer.parseInt("00000000", 2))
-	val chosenPort = Array(0, 3, 6, 0, 3, 3, 6, 0)
-	val resourceReady = Array(false, true, true, true, true, true, true, true)
-	val cyclesToRun = 8
+		Integer.parseInt("00001000", 2),
+		Integer.parseInt("00010000", 2),
+		Integer.parseInt("00100000", 2),
+		Integer.parseInt("01000000", 2),
+		Integer.parseInt("10000000", 2),
+		Integer.parseInt("00000000", 2)
+		)
+	val chosenPort = Array(0, 0, 0, 0, 5, 2, 7, 0, 0, 1, 2, 3, 3, 4, 5, 6, 7, 0)
+	val resourceReady = Array(false, true, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false)
+	val cyclesToRun = 18
 	
 	step(1)
 	
@@ -117,9 +142,6 @@ class RRArbiterTest(c: RRArbiter) extends Tester(c) {
 		poke(c.io.resource.ready, resourceReady(cycle))
 		println("inputArray(cycle): " + inputArray(cycle).toBinaryString)
 		for ( i <- 0 until numPorts) {
-			// var j = numPorts - 1 - i
-			// poke(c.io.requests(j).request, (inputArray(cycle) & (1 << i)) >> i)
-			// poke(c.io.requests(j).releaseLock, noting((lockArray(cycle) & (1 << i)) >> i))
 			poke(c.io.requests(i).request, (inputArray(cycle) & (1 << i)) >> i)
 			poke(c.io.requests(i).releaseLock, noting((lockArray(cycle) & (1 << i)) >> i))
 		}
@@ -130,7 +152,7 @@ class RRArbiterTest(c: RRArbiter) extends Tester(c) {
 			expect(c.io.requests(i).grant, (outputArray(cycle) & (1 << i)) >> i)
 		}
 	}
-	step(5)
+	step(1)
 }
 
 class DumbRRArbiterTest(c: RRArbiter) extends Tester(c) {
@@ -157,37 +179,3 @@ class DumbRRArbiterTest(c: RRArbiter) extends Tester(c) {
 	}
 	step(5)
 }
-/*
-class RRArbiterTest(c: RRArbiter) extends Tester(c, Array(c.io)) {
-	defTests {
-		var allGood = true
-		val numPorts : Int = c.numReqs
-		val vars = new HashMap[Node, Node]()
-		for (cycle <- 0 until 6) {
-			var chosenPort = Random.nextInt(numPorts)
-			var resourceReady = true
-			if (Random.nextInt(2) == 1) {
-				resourceReady = false
-			}
-			vars(c.io.resource.ready) = Bool(resourceReady)
-			for ( i <- 0 until numPorts ) {
-				vars(c.io.requests(i).request) = Bool(chosenPort == i)
-			}
-
-			if (resourceReady) {
-				vars(c.io.chosen) = UInt(chosenPort)
-			} else {
-				vars(c.io.chosen) = UInt(0)
-			}
-			vars(c.io.resource.valid) = Bool(resourceReady)
-
-			for ( i <- 0 until numPorts ) {
-				vars(c.io.requests(i).grant) = Bool((chosenPort == i) && resourceReady)
-			}
-			allGood &= step(vars)
-		}
-		allGood
-	}
-}
-*/
-

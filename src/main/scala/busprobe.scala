@@ -30,7 +30,7 @@ class BusProbe(parms : Parameters) extends Module(parms) {
 	var cyclesChannelBusyScoreboard = Vec.fill(routerRadix){ Reg(init = UInt(0, width=1)) }
 
 	
-	
+    assert((UInt(routerRadix) > UInt(1)), "BusProbe: RouterRadix must be > 1")	
 	for(c <- 0 until routerRadix){
 		val flit		 = io.inFlit(c)
 		val flitValid	 = io.inValid(c)

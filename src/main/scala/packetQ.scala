@@ -30,17 +30,17 @@ class PacketInjectionQ[T <: Data](parms: Parameters, tGen : Parameters => T) ext
 	
 	queue.io.enq.valid 				:= packet2Flit.io.flitValid
 	io.in.packetReady 				:= packet2Flit.io.packetReady
-	creditGen.io.outCredit.ready 	:= packet2Flit.io.flitValid
+	creditGen.io.outCredit		 	:= packet2Flit.io.flitValid
 	creditGen.io.inGrant 			:= queue.io.deq.ready
 
 	packet2Flit.io.packet 			:= io.in.packet
 	packet2Flit.io.packetValid 		:= io.in.packetValid	
-	packet2Flit.io.flitReady 		:= creditGen.io.outCredit.valid && queue.io.enq.ready
+	packet2Flit.io.flitReady 		:= creditGen.io.outCredit.grant && queue.io.enq.ready
 	
 	queue.io.enq.bits := packet2Flit.io.flit
 	
 	creditCon.io.inCredit <> io.out.credit
-	creditCon.io.inValid := queue.io.deq.valid 
+	creditCon.io.inConsume := queue.io.deq.valid 
 	queue.io.deq.ready := creditCon.io.outCredit
 
 	io.out.flit := queue.io.deq.bits
@@ -76,36 +76,36 @@ class PacketInjectionQTest(c: PacketInjectionQ[Packet]) extends Tester(c) {
 	poke(c.io.in.packetValid, 1)
 	step(1)
 	poke(c.io.in.packetValid, 0)
-	expect(c.io.out.credit.ready, 1)
+	expect(c.io.out.flitValid, 1)
 	
 	step(1)
-	expect(c.io.out.credit.ready, 1)
+	expect(c.io.out.flitValid, 1)
 	
 	step(1)
-	expect(c.io.out.credit.ready, 1)
+	expect(c.io.out.flitValid, 1)
 	
 	step(1)
-	expect(c.io.out.credit.ready, 1)
+	expect(c.io.out.flitValid, 1)
 	
 	step(1)
-	expect(c.io.out.credit.ready, 1)
+	expect(c.io.out.flitValid, 1)
 	
 	step(1)
-	expect(c.io.out.credit.ready, 1)
+	expect(c.io.out.flitValid, 1)
 	
 	step(2)
-	expect(c.io.out.credit.ready, 1)
+	expect(c.io.out.flitValid, 1)
 	expect(c.io.in.packetReady, 1)
 
 	step(1)
-	expect(c.io.out.credit.ready, 1)
+	expect(c.io.out.flitValid, 1)
 	expect(c.io.in.packetReady, 0)
 	step(3)
-	expect(c.io.out.credit.ready, 0)
+	expect(c.io.out.flitValid, 0)
 	expect(c.io.in.packetReady, 0)
 	poke(c.io.in.packetValid, 0)
 	step(1)
-	expect(c.io.out.credit.ready, 0)
+	expect(c.io.out.flitValid, 0)
 	expect(c.io.in.packetReady, 1)
 	step(10)
 	
