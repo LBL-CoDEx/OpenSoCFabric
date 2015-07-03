@@ -51,10 +51,12 @@ class InjectionQStateMgmt(parms: Parameters) extends Module(parms){
         }.elsewhen(curState === injQState.xmit){
             when(!io.creditsAvailable){
                 curState := injQState.hold
-            }.elsewhen(io.creditsAvailable && io.inputIsTail){
-                curState := injQState.idle
             }.otherwise{
-                curState := injQState.xmit
+            	when(io.inputIsTail) {
+            		curState := injQState.idle
+            	} .otherwise {
+                	curState := injQState.xmit
+                }
             }
         }.elsewhen(curState === injQState.hold){
             when(io.creditsAvailable){
@@ -76,6 +78,7 @@ class InjectionChannelQ(parms: Parameters) extends Module(parms) {
 
 	val queueDepth          = parms.get[Int]("queueDepth")
 	val numVCs              = parms.get[Int]("numVCs")
+	val credThreshold		= parms.get[Int]("credThreshold")
 	val vcArbCtor           = parms.get[Parameters=>Arbiter]("vcArbCtor")
 
 	val flitWidth : Int     = io.in.flit.getWidth
@@ -121,18 +124,18 @@ class InjectionChannelQ(parms: Parameters) extends Module(parms) {
     // --- State Machine Logic ---
     injQStateMachine.io.inputBufferValid    := queue.io.deq.valid
     injQStateMachine.io.vcAllocGranted      := vcArbiter.io.resource.valid
-    injQStateMachine.io.creditsAvailable    := outCredits(chosen) // && ~almostOutCredits(chosen)
+    injQStateMachine.io.creditsAvailable    := outCredits(chosen)  && ~almostOutCredits(chosen)
     injQStateMachine.io.inputIsTail         := queue.io.deq.bits.isTail() && queue.io.deq.valid
     // ------------------
 
     // ---- DEBUG ---  
-    assert(((queue.io.enq.ready && io.in.flitValid) || (~io.in.flitValid)),  "InjQ " + parms.path.head + ": queue overflow")
+    // assert(((queue.io.enq.ready && io.in.flitValid) || (~io.in.flitValid)),  "InjQ " + parms.path.head + ": queue overflow")
     //----------    
 
    
     //--- Input Logic ---
 	queue.io.enq.bits       <> io.in.flit
-	queue.io.enq.valid      := io.in.flitValid
+	queue.io.enq.valid      := (UInt(queueDepth) - queue.io.count) > UInt(credThreshold) && io.in.flitValid
 	creditGen.io.inGrant    := queue.io.deq.ready && queue.io.deq.valid
 	creditGen.io.outCredit  <> io.in.credit
     //------------

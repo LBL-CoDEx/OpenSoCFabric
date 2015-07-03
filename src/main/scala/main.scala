@@ -298,7 +298,8 @@ object OpenSoC {
 														("TopologyDimension"->Hard(Dim)),
 														("RoutersPerDim"->Hard(K)),
 														("Concentration"->Hard(C)),
-														("numVCs"->Soft(numVCs)),
+														("numVCs"->Hard(numVCs)),
+														("credThreshold"->Hard(1)),
 
 														("queueDepth"->Soft(16)),
 
@@ -321,7 +322,8 @@ object OpenSoC {
 														("TopologyDimension"->Hard(Dim)),
 														("RoutersPerDim"->Hard(K)),
 														("Concentration"->Hard(C)),
-														("numVCs"->Soft(numVCs)),
+														("numVCs"->Hard(numVCs)),
+														("credThreshold"->Hard(1)),
 
 														("queueDepth"->Soft(16)),
 
@@ -334,7 +336,7 @@ object OpenSoC {
 														("destCordDim"->Hard(Dim + C)),
 
 														("flitIDWidth"->Hard(4)),
-														("payloadWidth"->Hard(4)),
+														("payloadWidth"->Hard(32)),
                                                         ("breadCrumbCount"->Soft(1)),
 														("InputFlitizer"->Soft((parms: Parameters) => new FlitToFlit(parms)))
 														)
@@ -373,8 +375,9 @@ object OpenSoC {
 														("numResources"->Hard(numPortsCFlatBfly)),
 
 														("queueDepth"->Soft(16)),
-														("numVCs"->Soft(numVCs)),
-														
+														("numVCs"->Hard(numVCs)),
+														("credThreshold"->Hard(1)),
+
 														("packetTypeWidth"->Hard(4)),
 														("packetMaxLength"->Hard(16)),
 														("packetWidth"->Hard(32)),

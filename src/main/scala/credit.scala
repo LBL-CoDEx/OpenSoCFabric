@@ -31,7 +31,8 @@ class CreditGen(parms: Parameters) extends Module(parms) {
 }
 
 class CreditCon(parms: Parameters) extends Module(parms) {
-	val numCreds = parms.get[Int]("numCreds")   
+	val numCreds = parms.get[Int]("numCreds")
+	val threshold = parms.get[Int]("credThreshold")
 	val io = new Bundle {
 		val inCredit = new Credit().flip()
 		val inConsume = Bool(INPUT)
@@ -41,8 +42,7 @@ class CreditCon(parms: Parameters) extends Module(parms) {
 		 //val credCount = UInt(width = log2Up(numCreds)+1).asOutput
 	}
 	val credCount = Reg(init=UInt(numCreds, log2Up(numCreds)+1))
-	val threshold = 1
-
+	
 	when (credCount === UInt(numCreds)) {
 		credCount := credCount - io.inConsume.toUInt()
 	} .elsewhen ((credCount > UInt(threshold))) {// && (credCount < UInt(numCreds))) {
