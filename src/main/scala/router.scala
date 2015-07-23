@@ -217,8 +217,8 @@ class SimpleRouter(parms: Parameters) extends Router(parms) {
 		
 		// TAIL LOGIC
 		val flitIsTail = routingInBuffer.io.deq.bits.isTail() && routingInBuffer.io.deq.valid
-		val flitGranted = orR(Vec((0 until numOutChannels).map(n => swAllocator.io.requests(n)(i).grant)).toBits)
-		val noInputReq = ~orR(Vec((0 until numOutChannels).map(n => swAllocator.io.requests(n)(i).request)).toBits)
+		val flitGranted = Bool(true) //orR(Vec((0 until numOutChannels).map(n => swAllocator.io.requests(n)(i).grant)).toBits)
+		val noInputReq = UInt(1) //~orR(Vec((0 until numOutChannels).map(n => swAllocator.io.requests(n)(i).request)).toBits)
 		val pop = (flitGranted && flitIsTail)// || noInputReq
 
 		when(flitGranted) {
@@ -307,7 +307,7 @@ class SimpleRouter(parms: Parameters) extends Router(parms) {
 		swAllocator.io.resources(i).ready := routingOutBuffer.io.enq.ready
 		routingOutBuffer.io.enq.bits <> switch.io.outPorts(i)
 		when(switch.io.outPorts(i).isHead()){
-			routingOutBuffer.io.enq.valid := swAllocator.io.resources(i).valid  && orR(Vec((0 until numInChannels).map(n => swAllocator.io.requests(i)(n).grant)).toBits) 
+			routingOutBuffer.io.enq.valid := UInt(0) //swAllocator.io.resources(i).valid  && orR(Vec((0 until numInChannels).map(n => swAllocator.io.requests(i)(n).grant)).toBits) 
 		}.otherwise{
 			routingOutBuffer.io.enq.valid := swAllocator.io.resources(i).valid  //&&  orR(Vec((0 until numInChannels).map(n => swAllocator.io.requests(i)(n).grant)).toBits) //Bug: valid goes high incorrectly, causing bad data to be latched
 		}
@@ -504,7 +504,8 @@ class SimpleVCRouter(parms: Parameters) extends VCRouter(parms) {
 	val routerInCredits = parms.get[Int]("routerInCredits")
 	val routerOutCredits = parms.get[Int]("routerOutCredits")
 	val routingFuncCtor = parms.get[Parameters=>RoutingFunction]("rfCtor")
- 	
+ 	val numPriorityLevels = parms.get[Int]("numPriorityLevels") 
+
  	val numIns : Int = numInChannels*numVCs
  	val numOuts : Int = numOutChannels*numVCs
 
@@ -517,7 +518,7 @@ class SimpleVCRouter(parms: Parameters) extends VCRouter(parms) {
 	val swAllocator = Chisel.Module( new SwitchAllocator(parms.child("SWAlloc", Map(
 			("numReqs"->Soft(numIns)),
 			("numRes"->Soft(numOutChannels)),
-			("arbCtor"->Soft( (parms: Parameters) => new RRArbiter(parms) ))
+			("arbCtor"->Soft( (parms: Parameters) => new RRArbiterPriority(parms) ))
 		))) ) //Collection of arbiters
 	switch.io.sel <> swAllocator.io.chosens
 
@@ -620,11 +621,15 @@ class SimpleVCRouter(parms: Parameters) extends VCRouter(parms) {
 
             val routerStateMgmt     = Chisel.Module(new VCRouterStateManagement(parms))
 
-			val vcReplacer           = Chisel.Module( new ReplaceVCPort(parms.child( ("ReplaceVCPort",i,j), Map() )))
+			val vcReplacer          = Chisel.Module( new ReplaceVCPort(parms.child( ("ReplaceVCPort",i,j), Map() )))
 			val rfResult            = Reg(init=UInt(0, width=Math.pow(2, routingFunction.io.result.getWidth).toInt )) 
 			val rfResultInt         = Reg(init=UInt(0, width=routingFunction.io.result.getWidth ))  
 			val lockControl         = Reg(init=UInt(1, width=1 ))
-            val assignedVC          = Reg(init=UInt(0, width = io.inChannels(0).flit.getWidth))
+            		val assignedVC          = Reg(init=UInt(0, width = io.inChannels(0).flit.getWidth))
+
+			val flitPriority        = Reg(init=UInt(0, width=log2Up(numPriorityLevels)))
+			val priorityLevel       = UInt(width=log2Up(numPriorityLevels))
+			priorityLevel          := UInt(0)
 
             val VCRouterState       = new VCRouterState
             val VCRouterOutputState = new VCRouterOutputState
@@ -715,6 +720,9 @@ class SimpleVCRouter(parms: Parameters) extends VCRouter(parms) {
 				swAllocator.io.requests(k)(index).releaseLock   := lockControl.toBool && (routerStateMgmt.io.currentState === VCRouterState.swAllocGranted)
 
 				vcAllocator.io.resources(index).ready           := routingInBuffer.io.deq.valid && (routerStateMgmt.io.currentState >= VCRouterState.packetRouted)
+	
+				swAllocator.io.requests(k)(index).priorityLevel := flitPriority
+			
 			}
             //--------------------------------- 
 
@@ -728,8 +736,10 @@ class SimpleVCRouter(parms: Parameters) extends VCRouter(parms) {
 				routingInBuffer.io.deq.ready        := flitGranted && (routerStateMgmt.io.currentState >= VCRouterState.vcAllocGranted) && creditConsReady(rfResultInt)(assignedVC)
                 readyToXmit(index)(rfResultInt)     := flitGranted && (routerStateMgmt.io.currentState >= VCRouterState.vcAllocGranted) && creditConsReady(rfResultInt)(assignedVC) && routingInBuffer.io.deq.valid
                 creditGen.io.inGrant                := flitGranted && (routerStateMgmt.io.currentState >= VCRouterState.vcAllocGranted) && creditConsReady(rfResultInt)(assignedVC) && routingInBuffer.io.deq.valid
-			    //consumeCredit(rfResultInt)(assignedVC) := flitGranted && (routerStateMgmt.io.currentState >= VCRouterState.vcAllocGranted) && creditConsReady(rfResultInt)(assignedVC)
-			}.otherwise{
+		//consumeCredit(rfResultInt)(assignedVC) := flitGranted && (routerStateMgmt.io.currentState >= VCRouterState.vcAllocGranted) && creditConsReady(rfResultInt)(assignedVC)
+		flitPriority                        := routingInBuffer.io.deq.bits.asHead().priorityLevel
+			    
+			  }.otherwise{
 				routingInBuffer.io.deq.ready        := flitGranted && (routerStateMgmt.io.currentState === VCRouterState.swAllocGranted) && creditConsReady(rfResultInt)(assignedVC)
                 readyToXmit(index)(rfResultInt)     := flitGranted && (routerStateMgmt.io.currentState === VCRouterState.swAllocGranted) && creditConsReady(rfResultInt)(assignedVC) && routingInBuffer.io.deq.valid
 				creditGen.io.inGrant                := flitGranted && (routerStateMgmt.io.currentState === VCRouterState.swAllocGranted) && creditConsReady(rfResultInt)(assignedVC) && routingInBuffer.io.deq.valid

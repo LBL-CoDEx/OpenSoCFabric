@@ -14,13 +14,14 @@ abstract class FlitCommon(val parms: Parameters) extends Bundle {
 }
 
 class HeadFlit(parms: Parameters) extends FlitCommon(parms) {
-	val packetTypeWidth = parms.get[Int]("packetTypeWidth")
-	val destCordDim     = parms.get[Int]("destCordDim")
-	val destCordWidth   = parms.get[Int]("destCordWidth")
+	val packetTypeWidth   = parms.get[Int]("packetTypeWidth")
+	val destCordDim       = parms.get[Int]("destCordDim")
+	val destCordWidth     = parms.get[Int]("destCordWidth")
+	val numPriorityLevels = parms.get[Int]("numPriorityLevels") 
 	
-	val packetType      = UInt(width = packetTypeWidth)
-	val destination     = Vec.fill(destCordDim){UInt(width = destCordWidth)}
-
+	val packetType        = UInt(width = packetTypeWidth)
+	val destination       = Vec.fill(destCordDim){UInt(width = destCordWidth)}
+	val priorityLevel     = UInt(width = log2Up(numPriorityLevels))
 	
 	/*
 	val RoutingMode = UInt(width = RoutingModeWidth)

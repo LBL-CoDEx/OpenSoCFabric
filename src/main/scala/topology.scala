@@ -16,19 +16,25 @@ import scala.runtime.ScalaRunTime._
 class CreditBuffer(parms: Parameters) extends Module(parms){
 
     val numVCs = parms.get[Int]("numVCs")
+	val Dim = parms.get[Int]("TopologyDimension") // Dimension of topology
+	val C = parms.get[Int]("Concentration") // Processors (endpoints) per router.
+    
+    val routerRadix = 2 * Dim + C
     
     val io = new Bundle{
-        val in  = new ChannelVC(parms)
-        val out = new ChannelVC(parms).flip()
+        val in  = Vec.fill(routerRadix) { new ChannelVC(parms) }
+        val out = Vec.fill(routerRadix) { new ChannelVC(parms).flip() }
     }
 
-    io.out.flit         := io.in.flit
-    io.out.flitValid    := io.in.flitValid
+    for (i <- 0 until routerRadix){
+        io.out(i).flit         := io.in(i).flit
+        io.out(i).flitValid    := io.in(i).flitValid
     
-    for (c <- 0 until numVCs){ 
-        val creditDelay = Reg(init=UInt(0, width=1 ))
-        creditDelay := io.out.credit(c).grant
-        io.in.credit(c).grant := creditDelay
+        for (c <- 0 until numVCs){ 
+            val creditDelay = Reg(init=UInt(0, width=1 ))
+            creditDelay := io.out(i).credit(c).grant
+            io.in(i).credit(c).grant := creditDelay
+        }
     }
 
 }
@@ -184,8 +190,8 @@ class CMesh(parms: Parameters) extends Topology(parms) {
 			var consumerrouter = FindConsumerRouter(coord, i) 	// - C is contained here. The index refers to channels after the first C ones (the first indexed channels are I/E
 			if (consumerrouter != coord) { 						// If they are equal it means that there is no appropriate neighbor router.
 				//routermap(consumerrouter).io.inChannels(i) 	<> routermap(coord).io.outChannels(i) 
-				routermap(consumerrouter).io.inChannels(i) 	<> creditBufsMap(coord).io.out
-                creditBufsMap(coord).io.in                  <> routermap(coord).io.outChannels(i) 
+				routermap(consumerrouter).io.inChannels(i) 	<> creditBufsMap(coord).io.out(i)
+                creditBufsMap(coord).io.in(i)                  <> routermap(coord).io.outChannels(i) 
 				busProbesMap(coord).io.inFlit(i) 			:= routermap(coord).io.outChannels(i).flit  
 				busProbesMap(coord).io.inValid(i) 			:= routermap(coord).io.outChannels(i).flitValid
 				busProbesMap(coord).io.routerCord 			:= UInt(consumerrouter.product)
@@ -299,6 +305,7 @@ class VCCMesh(parms: Parameters) extends VCTopology(parms) {
 	// println("numRouters: " + numRouters)
 	var connectionsMap = new HashMap[Vector[Int], Array[Int]]()
 	var busProbesMap = new HashMap[Vector[Int], BusProbe]()
+    var creditBufsMap = new HashMap[Vector[Int], CreditBuffer]()
 	for (n <- 0 until numRouters) {
 		// println("coord: " + coord)
 		var newRouter = Chisel.Module ( routerCtor(
@@ -313,9 +320,11 @@ class VCCMesh(parms: Parameters) extends VCTopology(parms) {
 			))))
 		//var newBusProbe = Chisel.Module( new BusProbe(parms) ) 
 		var newBusProbe = Chisel.Module( new BusProbe(parms.child("BusProbeParms", Map( ("routerRadix"->Soft(routerRadix)) )) ) ) 
+        var newcreditBuf = Chisel.Module( new CreditBuffer(parms))
 		routermap += coord -> newRouter
 		connectionsMap += coord -> Array.fill(routerRadix)(0)
 		busProbesMap += coord -> newBusProbe
+        creditBufsMap += coord -> newcreditBuf
 		// Create the channels. Channels are indexed by the coordinates of the router that is feeding them flits (they are output channels for the router), and an integer with the port number.
 		coord = IncrementCoord(coord)
 	}
@@ -329,7 +338,9 @@ class VCCMesh(parms: Parameters) extends VCTopology(parms) {
 			// This is the messy part. We need to connect the same channel to the router that has it as input. Depending on i, we have to fetch the router.
 			var consumerrouter = FindConsumerRouter(coord, i) 	// - C is contained here. The index refers to channels after the first C ones (the first indexed channels are I/E
 			if (consumerrouter != coord) { 						// If they are equal it means that there is no appropriate neighbor router.
-				routermap(consumerrouter).io.inChannels(i) 	<> routermap(coord).io.outChannels(i) 
+				//routermap(consumerrouter).io.inChannels(i) 	<> routermap(coord).io.outChannels(i) 
+				routermap(consumerrouter).io.inChannels(i) 	<> creditBufsMap(coord).io.out(i)
+                creditBufsMap(coord).io.in(i)                  <> routermap(coord).io.outChannels(i) 
 				busProbesMap(coord).io.inFlit(i) 			:= routermap(coord).io.outChannels(i).flit  
 				busProbesMap(coord).io.inValid(i) 			:= routermap(coord).io.outChannels(i).flitValid
 				busProbesMap(coord).io.routerCord 			:= UInt(consumerrouter.product)

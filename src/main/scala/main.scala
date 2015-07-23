@@ -93,6 +93,13 @@ object OpenSoC {
 														)
 													))
 												))
+			case "RRArbiterPriority" =>	(moduleToTest = () =>  Module(new RRArbiterPriority(
+													parms.child("MyRRArbiterPriority", Map(
+														("numReqs"->Soft(8)),
+														("numPriorityLevels"->Hard(8))
+														)
+													))
+												))
 			case "SwitchAllocator"	=>	(moduleToTest = () => Module(new SwitchAllocator(
 													parms.child("MyAllocator", Map(
 														("numReqs"->Soft(4)),
@@ -338,7 +345,9 @@ object OpenSoC {
 														("flitIDWidth"->Hard(4)),
 														("payloadWidth"->Hard(32)),
                                                         ("breadCrumbCount"->Soft(1)),
-														("InputFlitizer"->Soft((parms: Parameters) => new FlitToFlit(parms)))
+														("InputFlitizer"->Soft((parms: Parameters) => new FlitToFlit(parms))),
+														
+														("numPriorityLevels"->Hard(5))
 														)
 													), (p)=>new Flit(p))
 												))
@@ -401,6 +410,7 @@ object OpenSoC {
 			case "MuxNTest"					=> ( chiselMainTest(myargs, moduleToTest) { c => new MuxNTest(c.asInstanceOf[MuxN[UInt]]) } )
 			case "SwitchTest"					=> ( chiselMainTest(myargs, moduleToTest) { c => new SwitchTest(c.asInstanceOf[Switch[UInt]]) } )
 			case "RRArbiterTest"			=> ( chiselMainTest(myargs, moduleToTest) { c => new RRArbiterTest(c.asInstanceOf[RRArbiter]) } )
+			case "RRArbiterPriorityTest"		=> ( chiselMainTest(myargs, moduleToTest) { c => new RRArbiterPriorityTest(c.asInstanceOf[RRArbiterPriority]) } )
 			case "SwitchAllocTest"			=> ( chiselMainTest(myargs, moduleToTest) { c => new SwitchAllocTest(c.asInstanceOf[SwitchAllocator]) } )
 			case "RouterRegFileTest"		=> ( chiselMainTest(myargs, moduleToTest) { c => new RouterRegFileTest(c.asInstanceOf[RouterRegFile]) } )
 			case "PacketToFlitTest"			=> ( chiselMainTest(myargs, moduleToTest) { c => new PacketToFlitTest(c.asInstanceOf[PacketToFlit]) } )

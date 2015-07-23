@@ -18,7 +18,7 @@ abstract class Allocator(parms: Parameters) extends Module(parms) {
 	val numRes = parms.get[Int]("numRes")
 	val arbCtor = parms.get[Parameters=>Arbiter]("arbCtor")
 	val io = new Bundle {
-		val requests = Vec.fill(numRes) { Vec.fill(numReqs){ new RequestIO }.flip }
+		val requests = Vec.fill(numRes) { Vec.fill(numReqs){ new RequestIO(parms) }.flip }
 		val resources = Vec.fill(numRes) { new ResourceIO }
 		val chosens = Vec.fill(numRes) { UInt(OUTPUT, Chisel.log2Up(numReqs)) }
 	}
