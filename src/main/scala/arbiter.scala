@@ -81,201 +81,67 @@ class RRArbiter(parms: Parameters) extends Arbiter(parms) {
 
 
 // //////////////////Algorithm for Arbiter with priority ////////////////////////
-
 class RRArbiterPriority(parms: Parameters) extends Arbiter(parms) {
 
 	val numPriorityLevels = parms.get[Int]("numPriorityLevels")
 	val nextGrant = Chisel.Reg(init=UInt( (1 << (numReqs-1)) , width=numReqs))
-//	val nextGrant = UInt(width=numReqs)
-//	nextGrant := UInt(1<<(numReqs-1))
 	
 	val winGrant = UInt(width=numReqs)
 	winGrant := UInt(1<<(numReqs-1))
 	
-//	val requestsBits = Cat( (0 until numReqs).map(io.requests(_).request.toUInt() ))
 	val requestsBits = Cat( (0 until numReqs).map(io.requests(_).request.toUInt() ).reverse )
-	
-	//val PArraySorted = Vec.fill(numReqs){Reg(init=UInt(0,width=numReqs))}
-	val PArraySorted = Vec.fill(numPriorityLevels){Vec.fill(numReqs){Reg(init=UInt(0,width=1))}}
+	val PArraySorted = Vec.fill(numPriorityLevels){Vec.fill(numReqs){Bool()}}
 
 	
 	val passSelectL0 = UInt(width = numReqs + 1)
 	val passSelectL1 = UInt(width = numReqs)
-//	val passSelectL0 = Chisel.Reg(init=UInt((0), width = numReqs+1))
-//	val passSelectL1 = Chisel.Reg(init=UInt((0), width = numReqs))
-
-
-//	val winner = UInt(width = numReqs)
 	
 	val winner       = UInt(width=numReqs)
-//	val winner = Chisel.Reg(init=UInt((0), width = numReqs))
-//	val pmax = Chisel.Reg(init = UInt((numReqs-1) , width = log2Up(numReqs)))
 	val pmax         = UInt(width = log2Up(numReqs))
-//	val winnerPort = Chisel.Reg(init = UInt((0), width = log2Up(numReqs)))
-//	val winnerPort   = UInt(width = log2Up(numReqs))
-//	val maxi = Chisel.Reg(init = UInt((0),width = log2Up(numReqs)))
-//	val maxi         = UInt(width = log2Up(numReqs))
-//	val maxj = Chisel.Reg(init = UInt((0),width = log2Up(numReqs)))
-//	val maxj         = UInt(width = log2Up(numReqs))
-//	val tempi = Chisel.Reg(init = UInt((0),width = log2Up(numReqs)))
-//	val tempj = Chisel.Reg(init = UInt((0),width = log2Up(numReqs)))
  	
- 	passSelectL0 := UInt(0)
-	passSelectL1 := UInt(0)
- 	
- 	winner := UInt(0)
-// 	maxi := UInt(0)
-// 	maxj := UInt(0)
-//      winnerPort := UInt(0)
-	pmax := UInt(0)
  	val nextGrantUInt = UInt(width = log2Up(numReqs))
  	nextGrantUInt := Chisel.OHToUInt(nextGrant)
- 	// pmax := Chisel.OHToUInt(nextGrant)
- 	val lockRelease = Bool()
+ 
+  val lockRelease = Bool()
  	lockRelease := io.requests(nextGrantUInt).releaseLock
-//	pmaxReg := pmax
 
-  //  when(~io.resource.ready && ~lockRelease){
-  //      winner := nextGrant
-  //  }.otherwise {
-  
-	when (orR(requestsBits)) {
-    	/* Locking logic encapsulating Round Robin logic */
-    	when ( nextGrant(nextGrantUInt) && requestsBits(nextGrantUInt) && ~lockRelease ) {
-    		/* If Locked (i.e. request granted but still requesting)
-    			make sure to keep granting to that port */
-		winGrant  := nextGrant
-		nextGrant := winGrant
-    	} 
-    	.otherwise {
+  val hasRequest = Vec.fill(numPriorityLevels){Bool()}
+  val pmaxReqs = Vec.fill(numReqs){Reg(Bool())}
+  pmaxReqs := PArraySorted(pmax)
 
-		//To refresh the Sorted Array
-		for (i <- 0 until numPriorityLevels){
-			PArraySorted(i) := UInt(0)
+  for (i <- 0 until numPriorityLevels) {
+    hasRequest(i) := PArraySorted(i).toBits.toUInt =/= UInt(0)
+	}
+
+  for (i <- 0 until numReqs) {
+	  for (j <- 0 until numPriorityLevels) {
+      PArraySorted(numPriorityLevels-1-j)(i) := (io.requests(i).priorityLevel === UInt(numPriorityLevels-1-j)) && requestsBits(i)
 		}
+	}
 
-		//To store the given priorities and the requesting ports in a sorted array
-    	        for (i <- 0 until numReqs) {
-			for (j <- 0 until numPriorityLevels) {
-				when (io.requests(i).priorityLevel === UInt(numPriorityLevels-1-j)) {
-					when (requestsBits(i)){
-					PArraySorted(numPriorityLevels-1-j)(i) := UInt(1)
-					//PArraySorted(numReqs-1-j) := PArraySorted(numReqs-1-j)+(UInt(1)<<UInt(i))
-					}
-				}
-			}
-		}
+  //max priority among recieved requests
+  pmax := PriorityEncoder(hasRequest.toBits.toUInt)
+ 
+  //Round Robin logic for requests with max priority
+  passSelectL0 := Cat(Bool(false).toUInt, (~pmaxReqs.toBits)) + Cat(Bool(false).toUInt, nextGrant(numReqs-2, 0), nextGrant(numReqs-1))
+  passSelectL1 := (~pmaxReqs.toBits) + Bool(true).toUInt
 
-		//To find which is the max priority level available
-		for (i <- 0 until numPriorityLevels) {
-			for (j <- 0 until numReqs){
-				when(PArraySorted(i)(j) === UInt(1)) {
-					pmax := UInt(i)
-				}
-			}
-		}
-
-		//To find the port number having this max priority
-    		passSelectL0 := Cat(Bool(false).toUInt, (~PArraySorted(pmax).toBits)) + Cat(Bool(false).toUInt, nextGrant(numReqs-2, 0), nextGrant(numReqs-1))
-    		passSelectL1 := (~PArraySorted(pmax).toBits) + Bool(true).toUInt
-    		winner := Mux(passSelectL0(numReqs), passSelectL1, passSelectL0(numReqs-1, 0)) & (PArraySorted(pmax).toBits)
-		
+  winner := Mux(passSelectL0(numReqs), passSelectL1, passSelectL0(numReqs-1, 0)) & (pmaxReqs.toBits)
+	
+  //locking logic
+  when ( nextGrant(nextGrantUInt) && requestsBits(nextGrantUInt) && ~lockRelease ) {
+	  winGrant  := nextGrant
+  } .otherwise {
 		winGrant  := Mux(orR(winner), winner, nextGrant)
-		nextGrant := winGrant
-    	}
-    	}
-	(0 until numReqs).map(i => io.requests(i).grant := winGrant(i).toBool() && io.resource.ready) 
-	io.chosen := Chisel.OHToUInt(winGrant) 
-	io.resource.valid := io.requests(io.chosen).grant && io.resource.ready //(winner != UInt(0))
+  }
+	
+  nextGrant := winGrant
+
+  (0 until numReqs).map(i => io.requests(i).grant := winGrant(i).toBool() && io.resource.ready)
+  io.chosen := Chisel.OHToUInt(winGrant) 
+	io.resource.valid := io.requests(io.chosen).grant
 	
 }
-/*   //////////////////////////////////////////////////////////////////////////////////////////
-
-
-		To find the port number having this max priority level
-		for (i <- 1 until numReqs+1) {
-			for (j <- 0 until i) {
-				when (PArraySorted(pmax)(i-1) === PArraySorted(pmax)(j)) {
-					tempi := PArraySorted(pmax)(i-1)
-					tempj := PArraySorted(pmax)(j)
-					maxi := UInt(i-1)
-					maxj := UInt(j)
-    	                   		when (((maxi>nextGrantUInt)&&(maxj>nextGrantUInt))||((maxi<nextGrantUInt)&&(maxj<nextGrantUInt))){
-    	                     			winnerPort := Mux(maxi>maxj,maxj,maxi)
-    	                   		}  
-    	                   		.elsewhen ((maxi>nextGrantUInt)&&(maxj<nextGrantUInt)) {
-    	                     			winnerPort := maxi
-    	                   		}
-    	                   		.elsewhen ((maxi<nextGrantUInt)&&(maxj>nextGrantUInt)) {
-    	                     			winnerPort := maxj
-    	                   		}
-    	                   		.otherwise {
-    	                     			when (maxi === nextGrantUInt) { winnerPort := maxj }
-    	                     			.otherwise { winnerPort := maxi }
-    	                   		}
-				}
-			}
-		}
-		
-	        winner := (UInt(1) << winnerPort)
-    	
-		
-//////////////////////////////////////////////////////////////////////////////////////////
-
-    	         To resolve different inputs having same priority level
-    	        for (i <- 1 until numReqs+1){
-    	            for (j <- 0 until i){
-    	                when (io.requests(i-1).prioritylevel === io.requests(j).prioritylevel) {
-    	                  when (io.requests(j).prioritylevel >= io.requests(pmax).prioritylevel) {   
-    	                   maxi := UInt(i-1)
-    	                   maxj := UInt(j)
-    	                   when (((maxi>nextGrantUInt)&&(maxj>nextGrantUInt))||((maxi<nextGrantUInt)&&(maxj<nextGrantUInt))){
-    	                     pmax := Mux(maxi>maxj,maxj,maxi)
-    	                   }  
-    	                   .elsewhen ((maxi>nextGrantUInt)&&(maxj<nextGrantUInt)) {
-    	                     pmax := maxi
-    	                   }
-    	                   .elsewhen ((maxi<nextGrantUInt)&&(maxj>nextGrantUInt)) {
-    	                     pmax := maxj
-    	                   }
-    	                   .otherwise {
-    	                     when (maxi === nextGrantUInt) { pmax := maxj }
-    	                     .otherwise { pmax := maxi }
-    	                   }
-    	                  }
-		        }
-    	            }
-    	        }
-    	        
-		
-    	         To resolve different inputs having different priority levels 
-    	        for (i <- 0 until numReqs){
-    	            when (io.requests(i).prioritylevel > io.requests(pmax).prioritylevel) {
-    	            pmax := UInt(i)
-    	            }
-    	        }
-    	        
-    	        
-	       winner := UInt(UInt(1) << winnerPort)
-    	        
-    	        
-    		Otherwise, select next requesting port 
-    		passSelectL0 := Cat(Bool(false).toUInt, ~requestsBits) + Cat(Bool(false).toUInt, nextGrant(numReqs-2, 0), nextGrant(numReqs-1))
-    		passSelectL1 := ~requestsBits + Bool(true).toUInt
-    		winner := Mux(passSelectL0(numReqs), passSelectL1, passSelectL0(numReqs-1, 0)) & requestsBits
-    		
-    		
-    		nextGrant := Mux(orR(winner), winner, nextGrant)
-    	}
-    	}
-    }
-
-
-
-////////////////////////////////////////////////////////////////////////////////////////
-
-*/
-
 
 // //////////////////Tester for Arbiter with priority ////////////////////////
 

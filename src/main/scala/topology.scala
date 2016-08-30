@@ -216,8 +216,8 @@ class CMesh(parms: Parameters) extends Topology(parms) {
 			println("Connecting router ", coord, "port ", p, " to ejection queue ", p+(n*C))
 			io.outChannels(p + (n*C)) 				<> routermap(coord).io.outChannels(p)
 		}
-		coord 					= IncrementCoord(coord)
 		io.cyclesRouterBusy(n)	:= busProbesMap(coord).io.cyclesRouterBusy
+		coord 					= IncrementCoord(coord)
 	}
 
 	coord = Vector.fill(Dim)(0)
@@ -365,8 +365,8 @@ class VCCMesh(parms: Parameters) extends VCTopology(parms) {
 			println("Connecting router ", coord, "port ", p, " to ejection queue ", p+(n*C))
 			io.outChannels(p + (n*C)) 				<> routermap(coord).io.outChannels(p)
 		}
-		coord 					= IncrementCoord(coord)
 		io.cyclesRouterBusy(n)	:= busProbesMap(coord).io.cyclesRouterBusy
+		coord 					= IncrementCoord(coord)
 	}
 
 	coord = Vector.fill(Dim)(0)

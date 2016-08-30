@@ -334,7 +334,7 @@ object OpenSoC {
 
 														("queueDepth"->Soft(16)),
 
-														("packetIDWidth"->Hard(16)),
+														("packetIDWidth"->Hard(32)),
 														("packetMaxLength"->Hard(16)),
 														("packetWidth"->Hard(32)),
 
